@@ -1,0 +1,13 @@
+[package]
+name = "mdm-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "md-manager HTTP API (Axum): web-app BFF target and REST surface for the CLI."
+
+[dependencies]
+mdm-core.workspace = true
+mdm-config.workspace = true
+mdm-db.workspace = true
+# axum, tokio, tower-http, etc. land with the first endpoints (TODO.md Phase 1).

@@ -1,0 +1,13 @@
+[package]
+name = "mdm-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "md-manager MCP server (rmcp): stdio for terminal agents + Streamable HTTP for web connectors."
+
+[dependencies]
+mdm-core.workspace = true
+mdm-config.workspace = true
+mdm-db.workspace = true
+# rmcp, tokio, etc. land with the MCP tool surface (TODO.md Phase 1/2).

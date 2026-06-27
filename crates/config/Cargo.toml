@@ -1,0 +1,10 @@
+[package]
+name = "mdm-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Layered configuration (figment), secret handling (secrecy), and tracing init."
+
+[dependencies]
+# figment, secrecy, tracing, tracing-subscriber added in the config task (TODO.md Phase 0).

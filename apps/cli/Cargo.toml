@@ -1,0 +1,15 @@
+[package]
+name = "mdm-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "md-manager CLI (`mdm`): an HTTP client over the API for humans and shell-capable agents."
+
+[[bin]]
+name = "mdm"
+path = "src/main.rs"
+
+[dependencies]
+mdm-core.workspace = true
+# clap, reqwest, comfy-table land with the command tree (TODO.md Phase 1).

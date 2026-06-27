@@ -1,0 +1,11 @@
+[package]
+name = "mdm-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQLx repository implementations, migrations, and the TenantDb RLS wrapper."
+
+[dependencies]
+mdm-core.workspace = true
+# sqlx, tokio, etc. are added when the first migration + TenantDb land (TODO.md Phase 0).

@@ -1,0 +1,25 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.96"
+
+[workspace.dependencies]
+# Internal crates
+mdm-core = { path = "crates/core" }
+mdm-db = { path = "crates/db" }
+mdm-config = { path = "crates/config" }
+
+# Shared third-party (versions resolved on first build; wired into more crates as layers land)
+thiserror = "2"
+uuid = { version = "1", features = ["v7", "serde"] }
+serde = { version = "1", features = ["derive"] }
+time = { version = "0.3", features = ["serde"] }
+
+[profile.dev]
+# Faster incremental builds during scaffolding.
+debug = "line-tables-only"
