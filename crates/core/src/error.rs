@@ -1,5 +1,5 @@
-//! Typed domain errors. Binaries map these onto transport-specific responses
-//! (HTTP status codes in `api`, MCP error payloads in `mcp`, exit codes in `cli`).
+//! Typed domain errors. Each surface maps these to its transport (HTTP status in `api`,
+//! MCP error payloads in `mcp`, exit codes in `cli`).
 
 use thiserror::Error;
 
@@ -10,15 +10,33 @@ pub enum Error {
     #[error("not found")]
     NotFound,
 
+    #[error("authentication required or invalid credentials")]
+    Unauthorized,
+
     #[error("permission denied")]
     Forbidden,
 
     /// Optimistic-concurrency conflict: the document changed since `expected`.
-    /// The transport layer surfaces this as HTTP 409 carrying current + base content
-    /// so the caller can perform a 3-way merge (see `docs/PLAN.md` §6).
+    /// Surfaced as HTTP 409 carrying current + base content for a 3-way merge
+    /// (see `docs/PLAN.md` §6).
     #[error("version conflict (expected {expected}, current {current})")]
-    VersionConflict { expected: i64, current: i64 },
+    Conflict { expected: i64, current: i64 },
+
+    /// A uniqueness violation (e.g. a doc already exists at that path).
+    #[error("already exists: {0}")]
+    AlreadyExists(String),
 
     #[error("invalid input: {0}")]
     Invalid(String),
+
+    /// An unexpected internal failure (DB error, etc.). Surfaced as HTTP 500;
+    /// the detail is logged, not returned to the caller.
+    #[error("internal error")]
+    Internal(String),
+}
+
+impl Error {
+    pub fn invalid(msg: impl Into<String>) -> Self {
+        Error::Invalid(msg.into())
+    }
 }

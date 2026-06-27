@@ -3,15 +3,15 @@
 > Living checklist. Update statuses as work lands. Full rationale in [docs/PLAN.md](docs/PLAN.md).
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
-**Current status (2026-06-27):** Phase 0 — scaffolding the cargo workspace.
-**Blockers:** Docker not installed locally (needed to run Postgres + Logto; not needed to build crates).
+**Current status (2026-06-27):** Phase 0 — workspace scaffolded, builds green, baseline committed. Next: expand `core` (models + repo traits + full RBAC) and the `config` crate (no Docker needed), then `db` migration + RLS.
+**Blockers:** Docker not installed locally — needed to *run* Postgres + Logto and verify the `db`/migration/RLS work end-to-end. Not needed to build crates or write SQL.
 
 ---
 
 ## Phase 0 — Scaffolding
-- [~] git init + `.gitignore` + `rust-toolchain.toml`
-- [~] Cargo workspace: `crates/{core,db,config}` + `apps/{api,mcp,cli}`
-- [ ] `cargo build` green on the skeleton
+- [x] git init + `.gitignore` + `rust-toolchain.toml`
+- [x] Cargo workspace: `crates/{core,db,config}` + `apps/{api,mcp,cli}` (binary `mdm`)
+- [x] `cargo build` green on the skeleton (+ RBAC unit tests pass)
 - [ ] `core`: domain models (org, team, project, document, version, tag, category, api_key)
 - [ ] `core`: repository **traits** + `Actor`/`AuthContext` + typed `thiserror` errors
 - [ ] `core`: RBAC resolver (lattice none<viewer<commenter<editor<admin, deny veto, viewer ceiling)

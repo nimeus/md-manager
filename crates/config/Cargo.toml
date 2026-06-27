@@ -4,7 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Layered configuration (figment), secret handling (secrecy), and tracing init."
+description = "Layered configuration (figment), secret handling, and tracing init."
 
 [dependencies]
-# figment, secrecy, tracing, tracing-subscriber added in the config task (TODO.md Phase 0).
+serde = { workspace = true }
+figment = { version = "0.10", features = ["toml", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = { workspace = true }

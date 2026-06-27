@@ -8,4 +8,20 @@ description = "SQLx repository implementations, migrations, and the TenantDb RLS
 
 [dependencies]
 mdm-core.workspace = true
-# sqlx, tokio, etc. are added when the first migration + TenantDb land (TODO.md Phase 0).
+uuid.workspace = true
+time.workspace = true
+serde_json.workspace = true
+sqlx = { version = "0.8", default-features = false, features = [
+    "postgres",
+    "runtime-tokio",
+    "uuid",
+    "time",
+    "migrate",
+    "macros",
+] }
+tracing = "0.1"
+anyhow = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+mdm-config.workspace = true

@@ -1,15 +1,23 @@
 //! `mdm-core` — the framework- and database-agnostic heart of md-manager.
 //!
-//! Holds domain models, repository **traits**, the RBAC resolver, and typed errors.
-//! The `api`, `mcp`, and `cli` binaries are thin transport wiring over the services
-//! defined here, so all three enforce identical validation, RBAC, versioning, and
-//! concurrency rules. See `docs/PLAN.md` and `CLAUDE.md`.
+//! Pure domain logic shared by every surface: models, the permission model (RBAC),
+//! 3-way merge for concurrent edits, header-aware markdown chunking for full-text
+//! search, input validation, and crypto helpers (content hashing + API-key HMAC).
 //!
-//! This is the Phase 0 skeleton; modules are fleshed out per `TODO.md`.
+//! The `db` crate orchestrates SQL/transactions and calls into this crate so the API,
+//! MCP, and CLI surfaces all enforce identical rules. See `docs/PLAN.md` and `CLAUDE.md`.
 
+pub mod chunk;
+pub mod crypto;
 pub mod error;
+pub mod ids;
+pub mod merge;
 pub mod model;
 pub mod rbac;
+pub mod validate;
 
 pub use error::{Error, Result};
-pub use model::{ActorType, AuthContext, Role};
+pub use model::{
+    ActorType, ApiKeyCreated, ApiKeyInfo, AuthContext, Document, DocumentSummary, DocumentVersion,
+    Organization, OrgRole, Project, Role, SearchHit, Tag, User, VersionKind, VersionSummary,
+};

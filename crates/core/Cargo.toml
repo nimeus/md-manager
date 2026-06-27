@@ -4,10 +4,20 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Framework-agnostic domain models, repository traits, RBAC, and errors for md-manager."
+description = "Framework-agnostic domain models, RBAC, merge, chunking, and crypto for md-manager."
 
 [dependencies]
 thiserror.workspace = true
 uuid.workspace = true
 serde.workspace = true
 time.workspace = true
+
+# Crypto + content hashing (API keys, share tokens, content_hash)
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+subtle = "2"
+rand = "0.9"
+
+# 3-way merge for concurrent edits
+diffy = "0.4"
