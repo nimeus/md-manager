@@ -3,66 +3,66 @@
 > Living checklist. Update statuses as work lands. Full rationale in [docs/PLAN.md](docs/PLAN.md).
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
-**Current status (2026-06-27):** Phase 0 — workspace scaffolded, builds green, baseline committed. Next: expand `core` (models + repo traits + full RBAC) and the `config` crate (no Docker needed), then `db` migration + RLS.
-**Blockers:** Docker not installed locally — needed to *run* Postgres + Logto and verify the `db`/migration/RLS work end-to-end. Not needed to build crates or write SQL.
+**Current status (2026-06-27):** ✅ **Phase 1 MVP complete & verified** — the agent surface works end to end.
+A solo dev or team can manage Postgres-stored markdown via the HTTP API, the `mdm` CLI, and the
+MCP server (stdio), with tenant isolation (RLS), full-snapshot versioning, optimistic concurrency
+(409 + 3-way merge data), atomic append, keyword FTS, tags, audit log, and API-key auth.
+
+**Local dev:** Postgres 17 via Homebrew (no Docker). Run `bash scripts/db-setup.sh` once, then
+`cargo run -p mdm-api` (see `.env.example` / [CLAUDE.md](CLAUDE.md)).
+
+**Next up:** Phase 2 — self-hosted Logto + remote MCP (Streamable HTTP) + OAuth 2.1 resource
+server so Claude.ai / ChatGPT connectors work; then Phase 3 web app.
 
 ---
 
-## Phase 0 — Scaffolding
+## Phase 0 — Scaffolding ✅
 - [x] git init + `.gitignore` + `rust-toolchain.toml`
-- [x] Cargo workspace: `crates/{core,db,config}` + `apps/{api,mcp,cli}` (binary `mdm`)
-- [x] `cargo build` green on the skeleton (+ RBAC unit tests pass)
-- [ ] `core`: domain models (org, team, project, document, version, tag, category, api_key)
-- [ ] `core`: repository **traits** + `Actor`/`AuthContext` + typed `thiserror` errors
-- [ ] `core`: RBAC resolver (lattice none<viewer<commenter<editor<admin, deny veto, viewer ceiling)
-- [ ] `core`: header-aware markdown chunker (respect headings, never split fenced code)
-- [ ] `db`: `PgPool` + `TenantDb` (txn + `set_config` GUCs) + repo accepts only `&mut TenantDb`
-- [ ] `db`: migration 0001 — users, orgs, members, teams, projects, grants, documents, document_versions
-- [ ] `db`: RLS policies + `FORCE ROW LEVEL SECURITY` + `md_app` (NOBYPASSRLS) + owner roles
-- [ ] `db`: startup assertion `md_app.rolbypassrls = false`
-- [ ] `db`: commit `.sqlx` offline cache
-- [ ] `config`: figment (TOML+env+profiles) + `secrecy` + tracing init
-- [ ] `docker-compose.yml` (Postgres 18 + Logto) + `.env.example`
-- [ ] CI: build offline + run migrations on a throwaway DB + `cargo test`/`clippy`
+- [x] Cargo workspace: `crates/{core,db,config,client}` + `apps/{api,mcp,cli}` (binary `mdm`)
+- [x] `cargo build` green + tests
+- [x] `core`: models, role lattice + RBAC, 3-way merge, header-aware chunker, validation, crypto (14 tests)
+- [x] `db`: `Db` + `TenantDb` (RLS GUC session), runtime-checked SQLx service
+- [x] migration 0001 (orgs/members/projects/documents/versions/tags/chunks/api_keys/audit) + RLS + FTS
+- [x] startup assertion `md_app` is `NOBYPASSRLS`
+- [x] `config` crate (figment + Secret + tracing)
+- [x] `scripts/db-setup.sh` (roles + dev/test DBs) + `.env.example`  *(replaces docker-compose; Postgres via brew)*
+- [ ] CI workflow (build + run migrations on a throwaway DB + tests)   ← still open
 
-## Phase 1 — Agent-surface MVP
-- [ ] Migration: tags, document_tags, categories, document_categories, api_keys, doc_chunks, audit_log
-- [ ] Org/team/project/membership services + REST handlers (`api`)
-- [ ] Documents CRUD: UUID + mutable path, content_hash, current_version
-- [ ] Versioning: full snapshots + `version_kind` + ~30s debounce/coalesce + retention job
-- [ ] Optimistic concurrency: `If-Match`/`expected_version` → 409 with base+current content
-- [ ] Server-side 3-way merge helper (`merge_strategy = fail|three_way|append_only`)
-- [ ] Atomic `append_to_doc` (`UPDATE … content = content || $1 … RETURNING`)
-- [ ] Soft delete + undelete + restore_version
-- [ ] Tags + categories services + endpoints
-- [ ] FTS: header-aware chunks on write + GIN tsvector + doc-level aggregation
-- [ ] API keys: HMAC-SHA256+pepper, prefix lookup, mint/revoke, lifecycle (min-perm, auto-disable)
-- [ ] Audit log: writes + auth/permission-denied + key-usage events
-- [ ] Rate limits / quotas (`tower-governor`) + max-doc-size cap
-- [ ] **MCP stdio** server (rmcp): full tool surface w/ `expected_version`
-- [ ] **CLI `mdm`**: auth/config/org/proj/doc/tag/cat/search, raw-markdown-to-stdout
-- [ ] Integration tests: tenant isolation, concurrency, RBAC lattice, CLI/MCP parity
+## Phase 1 — Agent-surface MVP ✅
+- [x] Org/project/membership + RLS/RBAC (owner/admin/member/viewer)
+- [x] Documents CRUD: UUID + mutable path, content_hash, current_version
+- [x] Full-snapshot versioning + `version_kind` (checkpoint/autosave) + ~30s autosave coalesce
+- [x] Optimistic concurrency: stale → 409 with `current` + `base` content for 3-way merge
+- [x] Atomic `append` (FOR UPDATE serialised), restore, soft delete/undelete, move, history
+- [x] Keyword FTS (generated tsvector + GIN, doc-level aggregation, snippet highlights)
+- [x] Tags (org-scoped) + document tagging
+- [x] API keys: HMAC+pepper, prefix lookup, mint/list/revoke, creator-role lifecycle binding
+- [x] Audit log (writes + key events)
+- [x] **HTTP API** (Axum): all endpoints + auth extractor + bootstrap + error mapping
+- [x] **MCP server** (stdio JSON-RPC): 15 tools, raw-markdown reads, conflict-aware updates
+- [x] **CLI `mdm`**: auth/whoami/org/proj/doc/search/tag/keys; raw-markdown to stdout; stdin/-m/--file body
+- [x] `mdm-client`: shared async HTTP client (used by MCP + CLI)
+- [x] Integration tests vs Postgres: tenant isolation, concurrency, RBAC, search, key revoke
+- [x] End-to-end verified: CLI + MCP agent loops, cross-surface consistency
+- [ ] Rate limits / quotas (`tower-governor`, max docs/project)   ← deferred polish
+- [ ] Per-team / per-doc grants + categories (schema-ready; service uses org role for now)
 
 ## Phase 2 — Web connectors (completes launch)
-- [ ] Self-hosted Logto configured (orgs, scopes, resource indicator, DCR/CIMD)
+- [ ] Self-hosted Logto configured (orgs, scopes, resource indicator, DCR)
 - [ ] `mcp` Streamable HTTP transport
-- [ ] OAuth resource server: PRM endpoint, JWKS cache, `aud`/`iss`/`exp` validation, 401+`WWW-Authenticate`
+- [ ] OAuth resource server: PRM endpoint, JWKS cache, `aud`/`iss`/`exp` validation
 - [ ] Spike: real Claude.ai + ChatGPT connector end-to-end
 - [ ] Minimal BFF OAuth callback + cookie session
 
 ## Phase 3 — Human web app (Next.js)
 - [ ] App shell + Logto BFF auth + org/project switcher
-- [ ] Doc tree (virtualized) + CodeMirror 6 editor (inline preview)
-- [ ] Version history + restore UI + conflict/merge UI
-- [ ] Tag/category management, search UI + `cmdk` palette
-- [ ] API-keys screen, share links (default-deny, audited)
+- [ ] Doc tree + CodeMirror 6 editor (inline preview)
+- [ ] Version history + restore + conflict/merge UI
+- [ ] Tag/category management, search UI + `cmdk`, API-keys screen, share links
 
 ## Phase 4 — Semantic search
-- [ ] pgvector + `embedding halfvec(1024)` column + HNSW
-- [ ] Async embedding worker (queue + dedup + backoff/dead-letter + FTS fallback)
+- [ ] pgvector + `embedding halfvec(1024)` + HNSW + async embedding worker
 - [ ] `search_docs` `mode=semantic|hybrid` (RRF)
 
 ## Phase 5 — Realtime + scale
-- [ ] Yjs/CRDT over Rust websocket (agent as CRDT peer)
-- [ ] OpenTelemetry export + alerting (conflict rate, embed-queue depth)
-- [ ] Version compaction; optional SSO via Logto
+- [ ] Yjs/CRDT over Rust websocket; OTel + alerting; version compaction; SSO
