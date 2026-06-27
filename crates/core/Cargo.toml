@@ -10,6 +10,7 @@ description = "Framework-agnostic domain models, RBAC, merge, chunking, and cryp
 thiserror.workspace = true
 uuid.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 time.workspace = true
 
 # Crypto + content hashing (API keys, share tokens, content_hash)

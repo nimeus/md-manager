@@ -3,6 +3,7 @@
 use mdm_core::model::{ActorType, ApiKeyCreated, AuthContext, Organization, OrgRole, User};
 use mdm_core::{Error, Result, crypto, ids, validate};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::rows::{ApiKeyAuthRow, ApiKeyInfoRow, OrgRow, UserRow};
 use crate::{Db, map_db};
@@ -69,6 +70,57 @@ impl Db {
             actor_type: ActorType::Agent,
             org_role: effective,
         })
+    }
+
+    /// Resolve an OAuth access token's subject + org claim into a request context.
+    ///
+    /// Used by the remote (Streamable HTTP) MCP endpoint after JWT validation. The Logto
+    /// subject must already be linked to a user (`users.logto_sub`) and that user must be a
+    /// current member of the claimed org. (Just-in-time provisioning of brand-new users/orgs
+    /// is deferred until Logto's org model is wired — see docs/PLAN.md §5 / Phase 2.)
+    pub async fn authenticate_oauth(&self, logto_sub: &str, org_id: Uuid) -> Result<AuthContext> {
+        // users is RLS-exempt (global identity): look up by Logto subject directly.
+        let user_id: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM users WHERE logto_sub = $1")
+                .bind(logto_sub)
+                .fetch_optional(self.pool())
+                .await
+                .map_err(map_db)?;
+        let user_id = user_id.ok_or(Error::Unauthorized)?;
+
+        let mut tx = self
+            .begin_scoped(org_id, user_id, ActorType::User)
+            .await
+            .map_err(map_db)?;
+        let role: Option<String> = sqlx::query_scalar(
+            "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2",
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_db)?;
+        tx.commit().await.map_err(map_db)?;
+
+        let role = OrgRole::from_db(&role.ok_or(Error::Forbidden)?)?;
+        Ok(AuthContext {
+            org_id,
+            user_id,
+            actor_type: ActorType::User,
+            org_role: role,
+        })
+    }
+
+    /// Link a Logto subject to an existing user (admin/dev helper; used in tests and by a
+    /// future account-linking flow).
+    pub async fn link_logto_sub(&self, user_id: Uuid, logto_sub: &str) -> Result<()> {
+        sqlx::query("UPDATE users SET logto_sub = $1 WHERE id = $2")
+            .bind(logto_sub)
+            .bind(user_id)
+            .execute(self.pool())
+            .await
+            .map_err(map_db)?;
+        Ok(())
     }
 
     /// Bootstrap a tenant: create (or reuse) a user, a new org with the user as owner, and

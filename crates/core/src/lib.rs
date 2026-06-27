@@ -11,6 +11,7 @@ pub mod chunk;
 pub mod crypto;
 pub mod error;
 pub mod ids;
+pub mod mcp;
 pub mod merge;
 pub mod model;
 pub mod rbac;

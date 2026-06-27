@@ -52,6 +52,49 @@ pub struct Config {
     pub db_max_connections: u32,
     /// Structured-log output format.
     pub log_format: LogFormat,
+    /// OAuth 2.1 resource-server settings for the remote MCP endpoint. When all of
+    /// `oauth_issuer` / `oauth_jwks_url` / `oauth_audience` are set, JWT auth is enabled
+    /// (in addition to API keys) and the discovery endpoint advertises the issuer.
+    pub oauth_issuer: Option<String>,
+    pub oauth_jwks_url: Option<String>,
+    /// The canonical resource URI; an access token's `aud` must equal this exactly.
+    pub oauth_audience: Option<String>,
+    /// JWT claim carrying the organization id (default `org`).
+    pub oauth_org_claim: String,
+    /// Public base URL of this MCP resource server (used in discovery metadata).
+    /// Defaults to `http://<api_addr>`.
+    pub public_url: Option<String>,
+}
+
+/// Resolved OAuth resource-server settings.
+#[derive(Debug, Clone)]
+pub struct OAuthSettings {
+    pub issuer: String,
+    pub jwks_url: String,
+    pub audience: String,
+    pub org_claim: String,
+}
+
+impl Config {
+    /// OAuth settings if fully configured.
+    pub fn oauth(&self) -> Option<OAuthSettings> {
+        match (&self.oauth_issuer, &self.oauth_jwks_url, &self.oauth_audience) {
+            (Some(issuer), Some(jwks_url), Some(audience)) => Some(OAuthSettings {
+                issuer: issuer.clone(),
+                jwks_url: jwks_url.clone(),
+                audience: audience.clone(),
+                org_claim: self.oauth_org_claim.clone(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Public base URL for discovery metadata.
+    pub fn public_base_url(&self) -> String {
+        self.public_url
+            .clone()
+            .unwrap_or_else(|| format!("http://{}", self.api_addr))
+    }
 }
 
 impl Default for Config {
@@ -70,6 +113,11 @@ impl Default for Config {
             autosave_debounce_secs: 30,
             db_max_connections: 10,
             log_format: LogFormat::Pretty,
+            oauth_issuer: None,
+            oauth_jwks_url: None,
+            oauth_audience: None,
+            oauth_org_claim: "org".to_string(),
+            public_url: None,
         }
     }
 }

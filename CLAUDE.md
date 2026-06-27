@@ -6,7 +6,7 @@ Guidance for Claude Code working in this repo. Keep current as the project evolv
 Multi-tenant SaaS for managing & sharing **markdown/text docs that live ONLY in Postgres** (never as files), usable by both humans (web UI, later) and AI agents (MCP server + CLI) under identical rules.
 
 - **Plan:** [docs/PLAN.md](docs/PLAN.md) · **Tracker:** [TODO.md](TODO.md)
-- **Status:** ✅ Phase 1 MVP complete (agent surface: API + CLI + MCP). Next: Phase 2 (Logto + OAuth remote MCP).
+- **Status:** ✅ Phase 1 MVP (API + CLI + stdio MCP) + ✅ Phase 2 resource server (remote MCP over HTTP at `/mcp` + OAuth 2.1 JWT validation). Web-connector go-live (run Logto + HTTPS) is external — see [docs/oauth-logto.md](docs/oauth-logto.md). Next build: Phase 3 web app.
 
 ## Stack
 Rust cargo workspace · Postgres 17 (local via Homebrew; no Docker) · Next.js (Phase 3) · self-hosted Logto (Phase 2).
@@ -17,8 +17,9 @@ crates/core    (mdm-core)   domain models, role lattice + RBAC, 3-way merge, md 
 crates/db      (mdm-db)     SQLx service + migrations + TenantDb (RLS session). Runtime-checked queries (no query! macros)
 crates/config  (mdm-config) figment config, Secret newtype, tracing
 crates/client  (mdm-client) async reqwest client for the API, shared by mcp + cli
-apps/api       (mdm-api)    Axum HTTP API (BFF target + REST for CLI). Bin: mdm-api
-apps/mcp       (mdm-mcp)    MCP server — hand-rolled stdio JSON-RPC 2.0 (15 tools). Bin: mdm-mcp
+apps/api       (mdm-api)    Axum HTTP API: REST (v1) + remote MCP at POST /mcp + OAuth discovery + JWT validation (oauth.rs, mcp.rs). Bin: mdm-api
+apps/mcp       (mdm-mcp)    stdio MCP server — JSON-RPC 2.0, dispatches via HTTP client. Bin: mdm-mcp
+                            (tool schemas shared via mdm_core::mcp; api/mcp dispatch to db, stdio dispatches to the API)
 apps/cli       (mdm-cli)    clap CLI. Bin: `mdm`
 migrations/                 sqlx migrations (0001_init.sql)
 ```

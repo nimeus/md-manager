@@ -3,6 +3,8 @@
 mod dto;
 mod error;
 mod handlers;
+mod mcp;
+mod oauth;
 mod state;
 
 use std::sync::Arc;
@@ -20,6 +22,12 @@ use crate::state::AppState;
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(handlers::healthz))
+        // Remote MCP (Streamable HTTP) + OAuth discovery
+        .route("/mcp", post(mcp::mcp_http))
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(mcp::protected_resource_metadata),
+        )
         .route("/v1/bootstrap", post(handlers::bootstrap))
         .route("/v1/me", get(handlers::whoami))
         .route("/v1/orgs", get(handlers::list_orgs))
@@ -77,9 +85,18 @@ async fn main() -> anyhow::Result<()> {
     .await?;
     db.assert_app_role_not_bypassrls().await?;
 
+    let oauth = cfg
+        .oauth()
+        .map(|settings| Arc::new(oauth::OAuthValidator::new(&settings)));
+    if oauth.is_some() {
+        tracing::info!("OAuth resource server enabled for the /mcp endpoint");
+    }
     let state = AppState {
         db,
         bootstrap_token: Arc::new(cfg.admin_bootstrap_token.expose().to_string()),
+        oauth,
+        resource_url: Arc::new(cfg.public_base_url()),
+        issuer: cfg.oauth().map(|s| Arc::new(s.issuer)),
     };
 
     let listener = tokio::net::TcpListener::bind(cfg.api_addr).await?;

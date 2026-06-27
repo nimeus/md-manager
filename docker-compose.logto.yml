@@ -1,0 +1,39 @@
+# Self-hosted Logto (OAuth 2.1 Authorization Server) for md-manager web connectors.
+# Requires Docker. md-manager itself uses local Homebrew Postgres; this compose is ONLY
+# for Logto + its own database. See docs/oauth-logto.md.
+#
+#   docker compose -f docker-compose.logto.yml up -d
+#   open http://localhost:3002   (admin console — create the first account)
+
+services:
+  logto-db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: logto_pg_dev
+      POSTGRES_DB: logto
+    volumes:
+      - logto-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  logto:
+    image: svhd/logto:latest
+    depends_on:
+      logto-db:
+        condition: service_healthy
+    ports:
+      - "3001:3001" # OIDC / app endpoint (issuer base)
+      - "3002:3002" # admin console
+    environment:
+      - TRUST_PROXY_HEADER=1
+      - DB_URL=postgres://postgres:logto_pg_dev@logto-db:5432/logto
+      - ENDPOINT=http://localhost:3001
+      - ADMIN_ENDPOINT=http://localhost:3002
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+
+volumes:
+  logto-pgdata:
