@@ -10,4 +10,11 @@ description = "md-manager HTTP API (Axum): web-app BFF target and REST surface f
 mdm-core.workspace = true
 mdm-config.workspace = true
 mdm-db.workspace = true
-# axum, tokio, tower-http, etc. land with the first endpoints (TODO.md Phase 1).
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum = "0.8"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+anyhow = "1"
