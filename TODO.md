@@ -74,7 +74,9 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] App shell + nav; projects list/create; project → documents list/create
 - [x] Markdown editor (edit/preview) with **conflict-aware save** (409 → load current / overwrite)
 - [x] Version history + restore; document delete; search page; API-keys (mint shown-once / revoke)
-- [ ] **Run `npm install && npm run build`** + headless verify (blocked here: npm unreachable)
+- [x] Static audit vs API contract: every page's fields match the Rust responses (whoami/projects/docs/history/search/keys), Next 15 async `params`/`searchParams` handled, all data pages dynamic via `cookies()` so `next build` needs no live API — no code fixes required
+- [x] First-run kit: `.env.local.example`, `.gitignore`, corrected README (the old `curl POST /login` verify was wrong — login is a server action), and `frontend/smoke-test.sh` (bootstraps + seeds + mints the real session cookie + checks the BFF renders API data); API-side of the smoke test validated live
+- [ ] **Run `npm install && npm run build && npm run start` then `./smoke-test.sh`** — only step left; needs a machine with npm registry access (unreachable in this sandbox)
 - [ ] Swap API-key login → Logto OAuth BFF flow
 - [ ] CodeMirror 6 editor; tags/categories UI; org/project switcher; `cmdk`; share links
 

@@ -4,36 +4,57 @@ The human web UI. A **BFF**: the browser never holds the API key — Next.js sto
 httpOnly cookie and proxies to the Rust API server-side. (Logto OAuth login swaps in later;
 only the sign-in step changes.)
 
-> ⚠️ **Not built in the authoring environment.** The npm registry was unreachable there, so
-> `npm install` / `next build` were not run. Build it on a machine with npm access — the code
-> targets Next.js 15 (App Router) + React 19 + Tailwind v4.
+Targets **Next.js 15** (App Router) + **React 19** + **Tailwind v4**. The code has been
+statically audited against the API contract (every page's fields match the Rust responses;
+Next 15 async `params`/`searchParams` are handled; all data pages are dynamic via `cookies()`
+so `next build` does **not** need the API running). It just needs `npm` to be reachable —
+which it wasn't in the authoring sandbox, so install/build must run on your machine.
 
-## Run
+## Setup (exact steps)
 
 ```bash
-# 1) start the Rust API (from the repo root) — see ../CLAUDE.md
-cargo run -p mdm-api            # http://127.0.0.1:8080
+# ── Terminal 1: the Rust API (from the repo root) ──────────────────────────────
+bash scripts/db-setup.sh                       # one-time: Postgres roles + dev DB
+MDM_ADMIN_BOOTSTRAP_TOKEN=dev-bootstrap-token \
+  cargo run -p mdm-api                          # listens on http://127.0.0.1:8080
 
-# 2) the web app — the upstream API host is fixed server-side (MDM_API_URL)
+# ── Terminal 2: the web app (from frontend/) ───────────────────────────────────
 cd frontend
-npm install
-MDM_API_URL=http://127.0.0.1:8080 npm run dev    # http://localhost:3000
+cp .env.local.example .env.local               # sets MDM_API_URL=http://127.0.0.1:8080
+npm install                                    # if peer-dep errors: npm install --legacy-peer-deps
+npm run dev                                     # http://localhost:3000
 ```
 
-Sign in with an API key (`mk_…`) from `mdm bootstrap` / the API-keys page. **Security:** the
-client supplies only the key; the API host comes from `MDM_API_URL` on the Next server, so a
-user can't make the BFF fetch arbitrary hosts (no SSRF). Defaults to `http://127.0.0.1:8080`.
-
-## Verify (headless, without a browser)
+Open http://localhost:3000 → you'll be redirected to `/login`. Get a key to paste:
 
 ```bash
-npm run build                   # type-checks + compiles every route
-npm run start &                 # serve the production build
-
-# login route sets the httpOnly cookie, then SSR pages render with data:
-curl -s -c /tmp/jar -X POST http://localhost:3000/login --data-urlencode "apiKey=mk_…"
-curl -s -b /tmp/jar http://localhost:3000/projects | grep -o "Projects"
+# from the repo root, mint an admin key (prints `api_key.secret`: mk_…)
+cargo run -p mdm-cli -- bootstrap \
+  --email you@example.com --name You --org-slug acme --org-name Acme \
+  --token dev-bootstrap-token
 ```
+
+Paste the `mk_…` key on the login page. **Security:** the client supplies only the key; the
+API host comes from `MDM_API_URL` on the Next server, so a user can't point the BFF at an
+arbitrary host (no SSRF).
+
+## Verify headlessly (one command)
+
+With both servers up (use `npm run build && npm run start` for a production build, or just
+`npm run dev`), run the end-to-end smoke test — it bootstraps a tenant, seeds a project, mints
+the exact session cookie the app uses, and confirms the BFF renders API data:
+
+```bash
+./smoke-test.sh
+# or point it somewhere else:
+API_URL=http://127.0.0.1:8080 WEB_URL=http://localhost:3000 \
+  BOOTSTRAP_TOKEN=dev-bootstrap-token ./smoke-test.sh
+```
+
+> Note: `/login` is a React **server action**, not a plain form POST — you can't log in with a
+> raw `curl -X POST /login`. The smoke test instead mints the `mdm_session` cookie directly
+> (it's just `base64({"apiKey":"…"})`, exactly what `lib/session.ts` writes) and requests
+> `/projects` with it, which exercises the real server-side BFF→API path.
 
 ## What's here
 
@@ -42,7 +63,7 @@ curl -s -b /tmp/jar http://localhost:3000/projects | grep -o "Projects"
 | `/login` | enter API key → httpOnly session cookie |
 | `/projects` | list + create projects |
 | `/projects/[slug]` | a project's documents + create |
-| `/documents/[id]` | CodeMirror-free markdown editor (edit/preview), **conflict-aware save**, version history + restore, delete |
+| `/documents/[id]` | markdown editor (edit/preview), **conflict-aware save**, version history + restore, delete |
 | `/search` | keyword full-text search |
 | `/settings/keys` | mint (shown once) / revoke API keys |
 
