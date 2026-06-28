@@ -8,19 +8,19 @@ import { api } from "@/lib/api";
 function NewProjectForm() {
   return (
     <form action={createProjectAction} className="flex flex-wrap items-end gap-3">
-      <div className="w-44">
+      <div className="w-full sm:w-44">
         <label className="label" htmlFor="slug">
           Slug
         </label>
         <input id="slug" name="slug" className="input" placeholder="handbook" required />
       </div>
-      <div className="w-56">
+      <div className="w-full sm:w-56">
         <label className="label" htmlFor="name">
           Name
         </label>
         <input id="name" name="name" className="input" placeholder="Team Handbook" required />
       </div>
-      <button className="btn" type="submit">
+      <button className="btn w-full sm:w-auto" type="submit">
         Create project
       </button>
     </form>

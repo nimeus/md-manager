@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSession } from "@/lib/session";
 
 import Logo from "./logo";
+import MobileNav from "./mobile-nav";
 
 const NAV: [string, string][] = [
   ["/#features", "Product"],
@@ -28,23 +29,23 @@ export default async function SiteHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          {session ? (
-            <Link href="/projects" className="btn btn-sm">
-              Open app →
-            </Link>
-          ) : (
-            <>
-              <Link
-                href="/login"
-                className="hidden text-sm text-ink-2 transition hover:text-ink sm:inline"
-              >
-                Sign in
+          <div className="hidden items-center gap-3 md:flex">
+            {session ? (
+              <Link href="/projects" className="btn btn-sm">
+                Open app →
               </Link>
-              <Link href="/login" className="btn btn-sm">
-                Get started
-              </Link>
-            </>
-          )}
+            ) : (
+              <>
+                <Link href="/login" className="text-sm text-ink-2 transition hover:text-ink">
+                  Sign in
+                </Link>
+                <Link href="/login" className="btn btn-sm">
+                  Get started
+                </Link>
+              </>
+            )}
+          </div>
+          <MobileNav items={NAV} signedIn={!!session} />
         </div>
       </div>
     </header>

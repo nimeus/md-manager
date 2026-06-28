@@ -69,7 +69,7 @@ mdm search "rollback procedure" --mode hybrid`;
     <>
       {/* Hero */}
       <section className="paper-texture border-b border-line">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-14 sm:gap-12 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
           <div>
             <span className="eyebrow">Docs for humans &amp; AI agents</span>
             <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight text-ink sm:text-5xl lg:text-[3.4rem]">
