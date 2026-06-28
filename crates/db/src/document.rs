@@ -648,6 +648,10 @@ impl Db {
         Ok(Some(doc.into()))
     }
 
+    /// Re-chunk a document as a **diff**: chunks whose (index, content_hash) are unchanged
+    /// are left in place — preserving their embedding — and only changed/new chunks are
+    /// re-inserted (with a NULL embedding for the worker to pick up). Removed chunks are
+    /// deleted. This avoids re-embedding an entire doc on every edit.
     async fn reindex_chunks(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -655,15 +659,42 @@ impl Db {
         doc_id: Uuid,
         content: &str,
     ) -> Result<()> {
-        sqlx::query("DELETE FROM doc_chunks WHERE document_id = $1")
+        use std::collections::HashMap;
+
+        let new_chunks = mdm_core::chunk::chunk_markdown(content);
+        let existing: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT chunk_index, content_hash FROM doc_chunks WHERE document_id = $1",
+        )
+        .bind(doc_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(map_db)?;
+        let existing: HashMap<i32, String> = existing.into_iter().collect();
+
+        let mut keep: Vec<i32> = Vec::new();
+        let mut to_insert: Vec<(&mdm_core::chunk::Chunk, String)> = Vec::new();
+        for chunk in &new_chunks {
+            let hash = crypto::content_hash(&chunk.content);
+            if existing.get(&chunk.index) == Some(&hash) {
+                keep.push(chunk.index);
+            } else {
+                to_insert.push((chunk, hash));
+            }
+        }
+
+        // Delete existing chunks that changed or were removed (keep the rest + their embeddings).
+        sqlx::query("DELETE FROM doc_chunks WHERE document_id = $1 AND chunk_index <> ALL($2)")
             .bind(doc_id)
+            .bind(&keep)
             .execute(&mut **tx)
             .await
             .map_err(map_db)?;
-        for chunk in mdm_core::chunk::chunk_markdown(content) {
+
+        for (chunk, hash) in to_insert {
             sqlx::query(
-                "INSERT INTO doc_chunks (id, org_id, document_id, chunk_index, heading_path, content)
-                 VALUES ($1,$2,$3,$4,$5,$6)",
+                "INSERT INTO doc_chunks
+                   (id, org_id, document_id, chunk_index, heading_path, content, content_hash)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7)",
             )
             .bind(Uuid::now_v7())
             .bind(ctx.org_id)
@@ -671,6 +702,7 @@ impl Db {
             .bind(chunk.index)
             .bind(&chunk.heading_path)
             .bind(&chunk.content)
+            .bind(&hash)
             .execute(&mut **tx)
             .await
             .map_err(map_db)?;

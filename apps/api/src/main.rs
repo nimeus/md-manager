@@ -186,6 +186,12 @@ fn spawn_embedding_worker(
     let interval = std::time::Duration::from_secs(interval_secs);
     tokio::spawn(async move {
         loop {
+            // Reuse embeddings for identical content before calling the provider.
+            if let Ok(n) = store.dedup_by_content_hash().await
+                && n > 0
+            {
+                tracing::debug!(copied = n, "reused embeddings for duplicate chunks");
+            }
             match store.pending(batch).await {
                 Ok(chunks) if !chunks.is_empty() => {
                     let texts: Vec<String> = chunks.iter().map(|(_, t)| t.clone()).collect();

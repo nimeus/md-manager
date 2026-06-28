@@ -76,6 +76,32 @@ impl EmbeddingStore {
                 .await?,
         )
     }
+
+    /// Copy an existing embedding onto any unembedded chunk with identical content
+    /// (same `content_hash`), so duplicate content is never re-embedded. Returns the count
+    /// copied. Run before [`EmbeddingStore::pending`].
+    pub async fn dedup_by_content_hash(&self) -> anyhow::Result<u64> {
+        let affected = sqlx::query(
+            "UPDATE doc_chunks c SET embedding = d.embedding
+             FROM doc_chunks d
+             WHERE c.embedding IS NULL AND d.embedding IS NOT NULL
+               AND c.content_hash <> '' AND d.content_hash = c.content_hash AND c.id <> d.id",
+        )
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        Ok(affected)
+    }
+
+    /// Count of embedded chunks for a document (used in tests).
+    pub async fn embedded_count(&self, document_id: Uuid) -> anyhow::Result<i64> {
+        Ok(sqlx::query_scalar(
+            "SELECT count(*) FROM doc_chunks WHERE document_id = $1 AND embedding IS NOT NULL",
+        )
+        .bind(document_id)
+        .fetch_one(&self.pool)
+        .await?)
+    }
 }
 
 async fn ensure_schema(pool: &PgPool, dims: i32) -> anyhow::Result<()> {

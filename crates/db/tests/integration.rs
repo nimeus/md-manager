@@ -471,7 +471,41 @@ async fn full_db_layer() {
             hybrid.iter().any(|h| h.document_id == sdoc.id),
             "hybrid finds the alpha doc"
         );
-        eprintln!("✓ pgvector semantic + hybrid search verified");
+
+        // Dedup: editing one section preserves the unchanged section's embedding.
+        let pdoc = db
+            .create_document(
+                &ctx_a,
+                proj.id,
+                "diff/doc",
+                "Diff",
+                "# A\nalpha one\n\n# B\nbeta two\n",
+            )
+            .await
+            .expect("diff doc");
+        for (cid, _t) in store.pending(1000).await.unwrap() {
+            store.store(cid, &[0.5, 0.5, 0.0]).await.unwrap();
+        }
+        assert_eq!(
+            store.embedded_count(pdoc.id).await.unwrap(),
+            2,
+            "both chunks embedded"
+        );
+        db.update_document(
+            &ctx_a,
+            pdoc.id,
+            "# A\nalpha one\n\n# B\nbeta TWO changed\n",
+            pdoc.current_version,
+            VersionKind::Checkpoint,
+        )
+        .await
+        .expect("edit section B");
+        assert_eq!(
+            store.embedded_count(pdoc.id).await.unwrap(),
+            1,
+            "editing section B keeps section A's embedding (only B re-queued)"
+        );
+        eprintln!("✓ pgvector semantic + hybrid + embedding-dedup verified");
     } else {
         eprintln!("• skipping pgvector test (set MDM_TEST_SUPERUSER_URL to run)");
     }
