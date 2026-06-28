@@ -47,22 +47,24 @@ openssl rand -hex 16   # → MDM_ADMIN_BOOTSTRAP_TOKEN
 
 ## 1. Create the database
 
-In Dokploy: **Create → Database → Postgres** (name it e.g. `md-db`, image `postgres:17` —
-or `pgvector/pgvector:pg17` if you want semantic search). Deploy it.
+In Dokploy: **Create → Database → Postgres**. Set the **database name to `md_manager`**, image
+`postgres:17` (or `pgvector/pgvector:pg17` for semantic search). Deploy it.
 
-Open its **page → Database terminal** (or connect with the superuser URL Dokploy shows) and:
+That's all — **no SQL to run.** md-manager needs two roles (`md_owner` to own the tables and
+`md_app`, a non-owner `NOBYPASSRLS` runtime role — that second one is what makes row-level
+security actually isolate tenants, since a superuser would bypass it). The API **creates both
+roles itself on first boot** when you give it the superuser URL (next step).
 
-1. Create the app database:
-   ```sql
-   CREATE DATABASE md_manager;
-   ```
-2. Connect to it (`\c md_manager`) and paste [`scripts/db-roles.sql`](../scripts/db-roles.sql)
-   **after changing the two passwords**. This creates `md_owner` and the non-owner, NOBYPASSRLS
-   `md_app` role that makes row-level security enforce tenant isolation.
+From the database page, note three things Dokploy shows: the **internal host** (e.g.
+`md-db-xxxx`), and the superuser **user** and **password** you set. You'll also pick passwords
+for the two app roles — use the ones generated above, or your own.
 
-Note Dokploy's **internal** Postgres host (shown on the database page — something like
-`md-db-xxxx`). You'll use it in the connection URLs below so traffic stays on the private
-Docker network.
+> Don't want the API holding a superuser URL? Skip `MDM_SETUP_DATABASE_URL` below and create the
+> roles yourself once — paste [`scripts/db-roles.sql`](../scripts/db-roles.sql), or run a single
+> line over SSH:
+> ```bash
+> docker exec <pg-container> psql -U <superuser> -d md_manager -c "CREATE ROLE md_owner LOGIN PASSWORD 'OWNER_PW'; CREATE ROLE md_app LOGIN NOBYPASSRLS PASSWORD 'APP_PW'; ALTER SCHEMA public OWNER TO md_owner; GRANT USAGE ON SCHEMA public TO md_app;"
+> ```
 
 ---
 
@@ -78,6 +80,9 @@ Docker network.
 **Environment** (*Environment* tab) — replace hosts/passwords/domain:
 
 ```bash
+# Superuser URL (Dokploy's user/pass) — used ONCE at boot to create the two app roles below.
+MDM_SETUP_DATABASE_URL=postgres://DOKPLOY_USER:DOKPLOY_PW@INTERNAL_DB_HOST:5432/md_manager
+# The two app roles the API will create (pick passwords; OWNER_PW ≠ APP_PW):
 MDM_MIGRATION_DATABASE_URL=postgres://md_owner:OWNER_PW@INTERNAL_DB_HOST:5432/md_manager
 MDM_DATABASE_URL=postgres://md_app:APP_PW@INTERNAL_DB_HOST:5432/md_manager
 MDM_API_KEY_PEPPER=<openssl rand -hex 32>
@@ -90,9 +95,11 @@ MDM_PUBLIC_URL=https://api.you.com
 
 **Domain** (*Domains* tab): add `api.you.com`, container port **8080**, enable HTTPS.
 
-Click **Deploy**. The first build compiles the whole Rust workspace — give it a few minutes.
-When it's up, `https://api.you.com/healthz` should return `ok`. The API runs the database
-migrations automatically on startup (as `md_owner`).
+Click **Deploy**. The first build compiles the whole Rust workspace — give it a few minutes. On
+boot the API uses `MDM_SETUP_DATABASE_URL` to create `md_owner` / `md_app` (idempotently), runs
+the migrations as `md_owner`, then serves as `md_app`. When it's up,
+`https://api.you.com/healthz` returns `ok`. (Created the roles yourself? Just omit
+`MDM_SETUP_DATABASE_URL`.)
 
 > Optional — **semantic search**: use the `pgvector/pgvector:pg17` DB image, run
 > `CREATE EXTENSION vector;` once (superuser), and add `MDM_EMBEDDING_ENABLED=true` plus the

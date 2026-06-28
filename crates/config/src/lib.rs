@@ -38,6 +38,10 @@ pub struct Config {
     pub database_url: Secret,
     /// Connection string for the owner/migrator role (`md_owner`), used to run migrations.
     pub migration_database_url: Secret,
+    /// Optional superuser connection used ONCE at startup to auto-provision the `md_owner` /
+    /// `md_app` roles (taken from the two URLs above), so a managed Postgres needs no manual
+    /// SQL. Point it at the app database. Omit it if you create the roles yourself.
+    pub setup_database_url: Option<Secret>,
     /// Address the HTTP API binds to.
     pub api_addr: SocketAddr,
     /// Server-side pepper mixed into the HMAC of API keys and share tokens.
@@ -191,6 +195,7 @@ impl Default for Config {
             migration_database_url: Secret::new(
                 "postgres://md_owner:md_owner_dev@localhost:5432/md_manager".into(),
             ),
+            setup_database_url: None,
             api_addr: "127.0.0.1:8080".parse().expect("valid default addr"),
             api_key_pepper: Secret::new("dev-insecure-pepper-change-me".into()),
             admin_bootstrap_token: Secret::new("dev-bootstrap-token".into()),

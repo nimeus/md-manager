@@ -84,6 +84,58 @@ impl Db {
         Ok(())
     }
 
+    /// Optionally auto-provision the two app roles using a superuser connection, so a managed
+    /// Postgres (Dokploy, RDS, …) needs no manual SQL. The role names + passwords are taken
+    /// from the owner (migration) and app (runtime) URLs; `md_app` is created `NOBYPASSRLS`,
+    /// and `md_owner` is given ownership of the schema. Idempotent — safe to run every boot.
+    /// `setup_url` should point at the app database (so schema ownership targets it).
+    pub async fn provision_roles(
+        setup_url: &str,
+        owner_url: &str,
+        app_url: &str,
+    ) -> anyhow::Result<()> {
+        let (owner, owner_pw) =
+            parse_role_credentials(owner_url).context("parsing the migration database URL")?;
+        let (app, app_pw) =
+            parse_role_credentials(app_url).context("parsing the app database URL")?;
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(setup_url)
+            .await
+            .context("connecting with the setup (superuser) database URL")?;
+
+        // One injection-safe block: the role names/passwords are embedded as SQL string
+        // literals and applied through `format(%I, %L)`, which does the real identifier/literal
+        // escaping server-side. So both layers are safe even with odd characters.
+        let block = format!(
+            "DO $do$\nBEGIN\n\
+             IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {o}) THEN\n\
+               EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', {o}, {opw});\n\
+             ELSE\n\
+               EXECUTE format('CREATE ROLE %I WITH LOGIN PASSWORD %L', {o}, {opw});\n\
+             END IF;\n\
+             IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {a}) THEN\n\
+               EXECUTE format('ALTER ROLE %I WITH LOGIN NOBYPASSRLS PASSWORD %L', {a}, {apw});\n\
+             ELSE\n\
+               EXECUTE format('CREATE ROLE %I WITH LOGIN NOBYPASSRLS PASSWORD %L', {a}, {apw});\n\
+             END IF;\n\
+             EXECUTE format('ALTER SCHEMA public OWNER TO %I', {o});\n\
+             EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', {a});\n\
+             END\n$do$;",
+            o = sql_string_literal(&owner),
+            opw = sql_string_literal(&owner_pw),
+            a = sql_string_literal(&app),
+            apw = sql_string_literal(&app_pw),
+        );
+        sqlx::query(&block)
+            .execute(&pool)
+            .await
+            .context("provisioning md_owner / md_app roles")?;
+        pool.close().await;
+        Ok(())
+    }
+
     /// Safety check: the app role must NOT be able to bypass RLS. Call at startup.
     pub async fn assert_app_role_not_bypassrls(&self) -> anyhow::Result<()> {
         let bypass: bool =
@@ -138,6 +190,23 @@ impl Db {
             .await?;
         Ok(tx)
     }
+}
+
+/// Extract the username + password from a `postgres://user:password@host/db` URL. Passwords
+/// with `@` or `:` must be percent-encoded (hex/alphanumeric passwords are fine as-is).
+fn parse_role_credentials(url: &str) -> Option<(String, String)> {
+    let rest = url.split_once("://")?.1;
+    let userinfo = rest.split_once('@')?.0;
+    let (user, password) = userinfo.split_once(':')?;
+    if user.is_empty() || password.is_empty() {
+        return None;
+    }
+    Some((user.to_string(), password.to_string()))
+}
+
+/// Render a string as a safe SQL string literal: `'…'` with embedded quotes doubled.
+fn sql_string_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
 }
 
 /// Insert one audit-log row inside an existing tenant transaction.

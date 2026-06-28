@@ -126,7 +126,17 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Config::load()?;
     mdm_config::tracing_init::init(cfg.log_format);
 
-    // Run migrations as the owner role, then connect as the app role.
+    // Optionally auto-provision the md_owner / md_app roles from a superuser URL (managed
+    // Postgres convenience — no manual SQL). Then run migrations as the owner role.
+    if let Some(setup) = &cfg.setup_database_url {
+        tracing::info!("provisioning database roles from MDM_SETUP_DATABASE_URL");
+        Db::provision_roles(
+            setup.expose(),
+            cfg.migration_database_url.expose(),
+            cfg.database_url.expose(),
+        )
+        .await?;
+    }
     Db::run_migrations(cfg.migration_database_url.expose()).await?;
     let db = Db::connect(
         cfg.database_url.expose(),
