@@ -1,36 +1,13 @@
 import Link from "next/link";
 
 import CodeBlock from "@/components/code-block";
+import { apiBase } from "@/lib/docs";
 
 export const metadata = {
   title: "md-manager — markdown docs for humans and AI agents",
   description:
     "Keep your markdown in Postgres — versioned, searchable, permissioned — and let people and AI agents read and write it under the same rules.",
 };
-
-const CLI_SNIPPET = `# authenticate once (a scoped key, stored locally)
-mdm auth login --api-key mk_live_…
-
-# create a doc, then read it as raw markdown — pipe straight into an agent
-mdm doc create --project handbook --path runbooks/deploy \\
-  --title "Deploy" -m "# Deploy\\n1. Tag the release\\n2. Ship"
-mdm doc get 019f… | claude -p "summarize the deploy steps"
-
-# search across everything (keyword, semantic, or hybrid)
-mdm search "rollback procedure" --mode hybrid`;
-
-const MCP_SNIPPET = `// ~/.config/claude/claude_desktop_config.json
-{
-  "mcpServers": {
-    "md-manager": {
-      "command": "mdm-mcp",
-      "env": {
-        "MDM_API_URL": "https://docs.acme.com",
-        "MDM_API_KEY": "mk_live_…"
-      }
-    }
-  }
-}`;
 
 const FEATURES: { title: string; body: string; tag: string }[] = [
   {
@@ -66,6 +43,28 @@ const FEATURES: { title: string; body: string; tag: string }[] = [
 ];
 
 export default function Landing() {
+  const API = apiBase();
+  const CLI_SNIPPET = `# install once, then point it at this instance
+mdm auth login --api-url ${API} --api-key mk_live_…
+
+# create a doc, then read it as raw markdown — pipe straight into an agent
+mdm doc create --project handbook --path runbooks/deploy \\
+  --title "Deploy" -m "# Deploy\\n1. Tag the release\\n2. Ship"
+mdm doc get 019f… | claude -p "summarize the deploy steps"
+
+# search across everything (keyword, semantic, or hybrid)
+mdm search "rollback procedure" --mode hybrid`;
+
+  const MCP_SNIPPET = `// point any MCP client at the server with a key — no install
+{
+  "mcpServers": {
+    "md-manager": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "${API}/mcp",
+               "--header", "Authorization: Bearer mk_live_…"]
+    }
+  }
+}`;
   return (
     <>
       {/* Hero */}

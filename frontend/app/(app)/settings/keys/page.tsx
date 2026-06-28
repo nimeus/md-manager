@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import KeyCreator from "@/components/key-creator";
 import PageHeader from "@/components/page-header";
 import { revokeKeyAction } from "@/lib/actions";
@@ -15,6 +17,13 @@ export default async function KeysPage() {
       />
 
       <KeyCreator />
+
+      <div className="mt-4 rounded-lg border border-line-2 bg-clay-soft/25 px-4 py-3 text-sm text-ink-2">
+        Use a key to connect an agent:{" "}
+        <Link href="/docs/mcp" className="link-accent">Claude &amp; MCP hosts</Link>,{" "}
+        <Link href="/docs/cli" className="link-accent">the CLI</Link>, or grab{" "}
+        <Link href="/docs" className="link-accent">ready-made agent instructions</Link>.
+      </div>
 
       <h2 className="mt-8 mb-2 text-sm font-medium text-ink-soft">Keys</h2>
       <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">

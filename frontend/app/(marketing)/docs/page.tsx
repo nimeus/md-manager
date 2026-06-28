@@ -1,74 +1,98 @@
 import Link from "next/link";
 
+import CodeBlock from "@/components/code-block";
 import { H1, H2, Lead, P } from "@/components/doc-ui";
+import { apiBase } from "@/lib/docs";
 
 export const metadata = { title: "Docs — md-manager" };
 
-const CARDS: { href: string; tag: string; title: string; body: string }[] = [
-  {
-    href: "/docs/cli",
-    tag: "CLI",
-    title: "The mdm command",
-    body: "Read and write docs from any shell. Ideal for Claude Code, Gemini CLI, and scripts — raw markdown to stdout.",
-  },
-  {
-    href: "/docs/mcp",
-    tag: "MCP",
-    title: "The MCP server",
-    body: "A stdio MCP server exposing 20 tools. Point Claude Desktop or any MCP host at your documents.",
-  },
-  {
-    href: "/docs/connectors",
-    tag: "Connectors",
-    title: "Web connectors",
-    body: "Remote MCP over HTTP with OAuth 2.1, so hosted assistants like Claude.ai and ChatGPT can connect.",
-  },
-];
-
 export default function DocsOverview() {
+  const API = apiBase();
+
+  const AGENT_CONTEXT = `You can read and write shared markdown documents (team knowledge,
+runbooks, notes, specs) in md-manager using the \`mdm\` command. Prefer this over keeping
+knowledge only in chat — store anything durable so teammates and other agents can reuse it.
+
+Find and read before you write:
+  mdm search "<query>"            # search all docs (do this first)
+  mdm proj list                   # list projects
+  mdm doc get <id>                # print a document's markdown
+
+Write:
+  mdm doc create --project <slug> --path <dir/name> --title "<title>" -m "<markdown>"
+  mdm doc edit <id> -m "<markdown>"     # replace a document
+  mdm doc append <id> -m "<text>"       # add to a document
+
+Rules: search before creating (update existing docs, don't duplicate); keep docs focused;
+reference them by their stable id or project/path.`;
+
   return (
     <>
-      <H1>Documentation</H1>
+      <H1>Connect your agents</H1>
       <Lead>
-        md-manager stores markdown in Postgres and exposes it to people and AI agents under one
-        permission model. There are three ways an agent connects — pick whichever fits your host.
+        md-manager is a shared home for markdown docs that both people and AI agents read and
+        write. Give an agent a key and it works with the same documents your team does — over MCP
+        or the command line.
       </Lead>
 
-      <H2>The shape of it</H2>
+      <H2>1. Get a key</H2>
       <P>
-        Everything goes through one HTTP API backed by Postgres row-level security. The web app is
-        a thin BFF for humans; the CLI and MCP server are thin clients for agents. Same rules,
-        same data, three doors.
+        In the app, open <Link href="/settings/keys" className="link-accent">Settings → API Keys</Link>{" "}
+        and create one. It&apos;s shown once — copy it. A key is scoped to your organization and to
+        its creator&apos;s role.
       </P>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
-        {CARDS.map((c) => (
-          <Link
-            key={c.href}
-            href={c.href}
-            className="card group transition hover:border-line-2 hover:shadow-[var(--shadow-lift)]"
-          >
-            <div className="eyebrow">{c.tag}</div>
-            <h3 className="mt-2 text-lg font-semibold text-ink">{c.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-ink-2">{c.body}</p>
-            <span className="mt-4 inline-block text-sm text-clay transition group-hover:translate-x-0.5">
-              Read more →
-            </span>
-          </Link>
-        ))}
+      <H2>2. Choose how the agent connects</H2>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <Link
+          href="/docs/mcp"
+          className="card group transition hover:border-line-2 hover:shadow-[var(--shadow-lift)]"
+        >
+          <div className="eyebrow">MCP</div>
+          <h3 className="mt-2 text-lg font-semibold text-ink">Claude, Cursor & MCP hosts</h3>
+          <p className="mt-2 text-sm leading-relaxed text-ink-2">
+            Point Claude Desktop, Claude Code, or any MCP client at this instance — no install
+            needed. 20 tools for reading and writing docs.
+          </p>
+          <span className="mt-4 inline-block text-sm text-clay">Set up MCP →</span>
+        </Link>
+        <Link
+          href="/docs/cli"
+          className="card group transition hover:border-line-2 hover:shadow-[var(--shadow-lift)]"
+        >
+          <div className="eyebrow">CLI</div>
+          <h3 className="mt-2 text-lg font-semibold text-ink">Shell-capable agents</h3>
+          <p className="mt-2 text-sm leading-relaxed text-ink-2">
+            The <code className="font-mono text-[0.85em]">mdm</code> command reads and writes docs
+            from any terminal — ideal for coding agents that can run shell commands.
+          </p>
+          <span className="mt-4 inline-block text-sm text-clay">Use the CLI →</span>
+        </Link>
       </div>
 
-      <H2>Core concepts</H2>
+      <H2>3. Give your agent context</H2>
       <P>
-        A <strong>document</strong> has a stable UUID and a mutable path; it lives only in the
-        database. Documents belong to <strong>projects</strong>, inside an{" "}
-        <strong>organization</strong> (your tenant boundary). Tags and categories cross projects.
-        Every write is versioned, and stale writes return a structured conflict so nothing is lost.
+        Paste this into your agent&apos;s instructions (system prompt, rules file, or project
+        context) so it knows md-manager exists and how to use it. It assumes the{" "}
+        <code className="font-mono text-[0.85em]">mdm</code> CLI is available and signed in
+        (see <Link href="/docs/cli" className="link-accent">CLI</Link>).
       </P>
+      <div className="mt-4">
+        <CodeBlock filename="agent context — copy & paste" code={AGENT_CONTEXT} />
+      </div>
       <P>
-        Authentication is a scoped <strong>API key</strong> (<code className="font-mono">mk_…</code>
-        ) for the CLI and MCP server, or OAuth for web connectors. Either way you resolve to the
-        same <em>(user, org, role)</em> and the same row-level rules.
+        Using MCP instead of the CLI? The same idea applies — your agent calls the tools{" "}
+        <code className="font-mono text-[0.85em]">search_docs</code>,{" "}
+        <code className="font-mono text-[0.85em]">get_doc</code>,{" "}
+        <code className="font-mono text-[0.85em]">create_doc</code>,{" "}
+        <code className="font-mono text-[0.85em]">update_doc</code>, and{" "}
+        <code className="font-mono text-[0.85em]">append_to_doc</code>. Tell it to search before
+        creating and to persist durable knowledge as docs.
+      </P>
+
+      <P>
+        <span className="text-ink-soft">This instance&apos;s API:</span>{" "}
+        <code className="font-mono text-[0.85em] text-clay-dark">{API}</code>
       </P>
     </>
   );
