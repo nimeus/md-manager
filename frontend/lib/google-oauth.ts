@@ -7,6 +7,25 @@
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
 
+/**
+ * The app's PUBLIC origin (e.g. `https://mdm.example.com`). Behind a reverse proxy the Next
+ * server only sees its internal bind address (`0.0.0.0:3000`), which would produce a broken
+ * OAuth `redirect_uri`. Resolve it from, in order: `MDM_APP_URL` (set this in production for
+ * certainty), the `X-Forwarded-Host`/`-Proto` headers the proxy sets, then the request URL
+ * (correct in local dev).
+ */
+export function publicOrigin(req: Request): string {
+  const env = process.env.MDM_APP_URL?.replace(/\/+$/, "");
+  if (env) return env;
+  const fwdHost = req.headers.get("x-forwarded-host");
+  if (fwdHost) {
+    const proto = req.headers.get("x-forwarded-proto") ?? "https";
+    return `${proto}://${fwdHost.split(",")[0].trim()}`;
+  }
+  // Local dev (no proxy): the request URL is correct.
+  return new URL(req.url).origin;
+}
+
 function config() {
   const clientId = process.env.MDM_GOOGLE_CLIENT_ID;
   const clientSecret = process.env.MDM_GOOGLE_CLIENT_SECRET;

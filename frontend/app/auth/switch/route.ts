@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { publicOrigin } from "@/lib/google-oauth";
 import { setCurrentOrg } from "@/lib/session";
 
 /**
@@ -8,7 +9,7 @@ import { setCurrentOrg } from "@/lib/session";
  * still authorizes membership on every request (a non-member org id is rejected there).
  */
 export async function GET(req: NextRequest) {
-  const origin = new URL(req.url).origin;
+  const origin = publicOrigin(req);
   const org = new URL(req.url).searchParams.get("org");
   if (org) await setCurrentOrg(org);
   return NextResponse.redirect(new URL("/projects", origin));

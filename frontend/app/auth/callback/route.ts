@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { exchangeGoogleToken } from "@/lib/api";
-import { exchangeCodeForIdToken } from "@/lib/google-oauth";
+import { exchangeCodeForIdToken, publicOrigin } from "@/lib/google-oauth";
 import { setSession } from "@/lib/session";
 
 /**
@@ -12,7 +12,7 @@ import { setSession } from "@/lib/session";
  */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const origin = url.origin;
+  const origin = publicOrigin(req);
   const fail = (msg: string) =>
     NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(msg)}`, origin));
 

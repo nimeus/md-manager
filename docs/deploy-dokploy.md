@@ -120,10 +120,14 @@ the migrations as `md_owner`, then serves as `md_app`. When it's up,
 
 ```bash
 MDM_API_URL=https://api.you.com
+MDM_APP_URL=https://docs.you.com          # the web app's own public URL (for the OAuth redirect)
 MDM_GOOGLE_CLIENT_ID=<same google client id as the API>
 MDM_GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 # NODE_ENV=production is already set in the image.
 ```
+
+> `MDM_APP_URL` matters: behind the proxy the server can't reliably tell its own public address,
+> and the Google `redirect_uri` must equal `MDM_APP_URL` + `/auth/callback`. Set it explicitly.
 
 **Domain**: add `docs.you.com`, container port **3000**, enable HTTPS. **Deploy.**
 
