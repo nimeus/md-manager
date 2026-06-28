@@ -719,6 +719,15 @@ async fn web_auth_and_invites() {
     assert_eq!(alice2.user_id, alice.user_id);
     assert_eq!(alice2.orgs.len(), 1);
 
+    // Account-takeover guard: a DIFFERENT Google account claiming alice's (already-linked)
+    // email is refused — it can't hijack her account/orgs.
+    assert!(
+        db.provision_google_user("g-evil", "alice@example.com", "Evil")
+            .await
+            .is_err(),
+        "a different google_sub must not take over an already-linked email"
+    );
+
     // 2) A web session resolves the user's role in their org and can use it.
     let ctx_alice = db.authenticate_session(alice.user_id, None).await.unwrap();
     assert_eq!(ctx_alice.org_id, alice_org);

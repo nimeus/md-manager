@@ -49,44 +49,75 @@ impl Db {
             name.trim().to_string()
         };
 
-        // 1) find-or-create the user (users is RLS-exempt; email + google_sub are unique).
-        let existing: Option<(Uuid, String)> = sqlx::query_as(
-            "SELECT id, email FROM users WHERE google_sub = $1 OR lower(email) = lower($2) LIMIT 1",
-        )
-        .bind(google_sub)
-        .bind(email)
-        .fetch_optional(self.pool())
-        .await
-        .map_err(map_db)?;
+        // 1) find-or-create the user. The Google `sub` is the authoritative identity, so we
+        //    match on it FIRST. Only if no row owns this sub do we fall back to email — and we
+        //    REFUSE to take over an account already linked to a different Google account
+        //    (prevents takeover when an email is reused, e.g. a reassigned Workspace address).
+        //    Email→sub linking happens only for an as-yet-unlinked row (e.g. a bootstrap-created
+        //    user claiming their account); safe because Google asserted `email_verified`.
+        let by_sub: Option<(Uuid, String)> =
+            sqlx::query_as("SELECT id, email FROM users WHERE google_sub = $1 LIMIT 1")
+                .bind(google_sub)
+                .fetch_optional(self.pool())
+                .await
+                .map_err(map_db)?;
 
-        let (user_id, user_email) = match existing {
-            Some((id, em)) => {
-                sqlx::query(
-                    "UPDATE users SET google_sub = $1,
-                       display_name = CASE WHEN display_name = '' THEN $2 ELSE display_name END
-                     WHERE id = $3",
-                )
-                .bind(google_sub)
-                .bind(&display)
-                .bind(id)
-                .execute(self.pool())
-                .await
-                .map_err(map_db)?;
-                (id, em)
-            }
-            None => {
-                let id = ids::new_id();
-                sqlx::query(
-                    "INSERT INTO users (id, email, display_name, google_sub) VALUES ($1,$2,$3,$4)",
-                )
-                .bind(id)
-                .bind(email)
-                .bind(&display)
-                .bind(google_sub)
-                .execute(self.pool())
-                .await
-                .map_err(map_db)?;
-                (id, email.to_string())
+        let (user_id, user_email) = if let Some((id, em)) = by_sub {
+            sqlx::query(
+                "UPDATE users SET
+                   display_name = CASE WHEN display_name = '' THEN $1 ELSE display_name END
+                 WHERE id = $2",
+            )
+            .bind(&display)
+            .bind(id)
+            .execute(self.pool())
+            .await
+            .map_err(map_db)?;
+            (id, em)
+        } else {
+            let by_email: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
+                "SELECT id, email, google_sub FROM users WHERE lower(email) = lower($1) LIMIT 1",
+            )
+            .bind(email)
+            .fetch_optional(self.pool())
+            .await
+            .map_err(map_db)?;
+            match by_email {
+                // Email already belongs to a different Google account — refuse silently linking.
+                Some((_, _, Some(_))) => {
+                    tracing::warn!(%email, "google sign-in refused: email linked to another account");
+                    return Err(Error::Unauthorized);
+                }
+                // Unlinked existing account (e.g. bootstrap-created): link this Google sub.
+                Some((id, em, None)) => {
+                    sqlx::query(
+                        "UPDATE users SET google_sub = $1,
+                           display_name = CASE WHEN display_name = '' THEN $2 ELSE display_name END
+                         WHERE id = $3",
+                    )
+                    .bind(google_sub)
+                    .bind(&display)
+                    .bind(id)
+                    .execute(self.pool())
+                    .await
+                    .map_err(map_db)?;
+                    (id, em)
+                }
+                None => {
+                    let id = ids::new_id();
+                    sqlx::query(
+                        "INSERT INTO users (id, email, display_name, google_sub)
+                         VALUES ($1,$2,$3,$4)",
+                    )
+                    .bind(id)
+                    .bind(email)
+                    .bind(&display)
+                    .bind(google_sub)
+                    .execute(self.pool())
+                    .await
+                    .map_err(map_db)?;
+                    (id, email.to_string())
+                }
             }
         };
 
