@@ -22,7 +22,12 @@ export async function GET(req: NextRequest) {
 
   const jar = await cookies();
   const expected = jar.get("g_state")?.value;
+  const nextRaw = jar.get("g_next")?.value;
   jar.delete("g_state");
+  jar.delete("g_next");
+  // Same-origin relative paths only (open-redirect guard).
+  const safeNext =
+    nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
 
   if (oauthErr) return fail(oauthErr);
   if (!code || !state || !expected || state !== expected) return fail("invalid_state");
@@ -35,7 +40,7 @@ export async function GET(req: NextRequest) {
       user: ex.user,
       currentOrg: ex.orgs[0]?.id ?? "",
     });
-    return NextResponse.redirect(new URL("/projects", origin));
+    return NextResponse.redirect(new URL(safeNext ?? "/projects", origin));
   } catch {
     return fail("signin_failed");
   }
