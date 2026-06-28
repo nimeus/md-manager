@@ -3,8 +3,8 @@
 
 use mdm_core::model::{
     ActorType, ApiKeyInfo, AuditEntry, Category, Document, DocumentSummary, DocumentVersion,
-    OrgRole, Organization, Project, SearchHit, ShareLinkInfo, SharedDocument, Tag, Team, User,
-    VersionKind, VersionSummary,
+    Invitation, OrgRole, Organization, Project, SearchHit, ShareLinkInfo, SharedDocument, Tag,
+    Team, User, VersionKind, VersionSummary,
 };
 use mdm_core::{Error, Result};
 use sqlx::FromRow;
@@ -24,6 +24,28 @@ impl From<UserRow> for User {
             email: r.email,
             display_name: r.display_name,
         }
+    }
+}
+
+#[derive(FromRow)]
+pub struct InvitationRow {
+    pub id: Uuid,
+    pub org_id: Uuid,
+    pub email: String,
+    pub role: String,
+    pub created_at: OffsetDateTime,
+    pub expires_at: Option<OffsetDateTime>,
+}
+impl InvitationRow {
+    pub fn into_core(self) -> Result<Invitation> {
+        Ok(Invitation {
+            id: self.id,
+            org_id: self.org_id,
+            email: self.email,
+            role: OrgRole::from_db(&self.role)?,
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+        })
     }
 }
 

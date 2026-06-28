@@ -13,7 +13,9 @@ use mdm_embed::Embedder;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::google::GoogleValidator;
 use crate::oauth::OAuthValidator;
+use crate::session;
 
 /// Per-user request rate limiter (keyed by the authenticated user id).
 pub type RateLimiter = DefaultKeyedRateLimiter<Uuid>;
@@ -32,15 +34,33 @@ pub struct AppState {
     pub rate_limiter: Arc<RateLimiter>,
     /// Embeddings client (Some when semantic search is configured/enabled).
     pub embedder: Option<Arc<Embedder>>,
+    /// Google ID-token validator for web sign-in (Some when `MDM_GOOGLE_CLIENT_ID` is set).
+    pub google: Option<Arc<GoogleValidator>>,
+    /// HS256 secret for signing/verifying web session tokens (`mss_…`).
+    pub session_secret: Arc<String>,
+    /// Web session lifetime (seconds).
+    pub session_ttl_secs: i64,
 }
 
 /// Resolve a bearer token to an [`AuthContext`]:
 /// - `mk_…` ⇒ API key (terminal agents / CLI)
+/// - `mss_…` ⇒ web session token (browser via the Next.js BFF); `org_override` (the
+///   `X-Org-Id` header) selects which of the user's orgs to act in (the org switcher)
 /// - otherwise ⇒ OAuth JWT (web connectors), if OAuth is configured.
-pub async fn authenticate(state: &AppState, token: &str) -> Result<AuthContext, mdm_core::Error> {
+pub async fn authenticate(
+    state: &AppState,
+    token: &str,
+    org_override: Option<Uuid>,
+) -> Result<AuthContext, mdm_core::Error> {
     let token = token.trim();
     let ctx = if token.starts_with("mk_") {
         state.db.authenticate_api_key(token).await?
+    } else if token.starts_with(session::SESSION_PREFIX) {
+        let user_id = session::verify(&state.session_secret, token).map_err(|err| {
+            tracing::debug!(%err, "session token validation failed");
+            mdm_core::Error::Unauthorized
+        })?;
+        state.db.authenticate_session(user_id, org_override).await?
     } else if let Some(oauth) = &state.oauth {
         let claims = oauth.validate(token).await.map_err(|err| {
             tracing::debug!(?err, "OAuth token validation failed");
@@ -78,7 +98,13 @@ impl FromRequestParts<AppState> for Auth {
             .and_then(|v| v.to_str().ok())
             .and_then(|h| h.strip_prefix("Bearer "))
             .ok_or(ApiError(mdm_core::Error::Unauthorized))?;
-        let ctx = authenticate(state, token).await?;
+        // The org switcher: web sessions pick which org to act in via this header.
+        let org_override = parts
+            .headers
+            .get("x-org-id")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok());
+        let ctx = authenticate(state, token, org_override).await?;
         Ok(Auth(ctx))
     }
 }

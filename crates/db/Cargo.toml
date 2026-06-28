@@ -25,3 +25,5 @@ anyhow = "1"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 mdm-config.workspace = true
+# Integration tests share one Postgres DB and reset its schema in setup(); serialize them.
+serial_test = "3"

@@ -69,6 +69,15 @@ pub struct Config {
     /// Defaults to `http://<api_addr>`.
     pub public_url: Option<String>,
 
+    // --- Web sign-in (Google + web sessions) ---
+    /// Google OAuth client id. When set, `POST /v1/auth/google` verifies Google ID tokens
+    /// (aud == this) and issues web session tokens. Required for the web app's Google login.
+    pub google_client_id: Option<String>,
+    /// HS256 secret the API signs web session tokens (`mss_…`) with. Change in production.
+    pub session_secret: Secret,
+    /// Web session lifetime in seconds (default 30 days).
+    pub session_ttl_secs: i64,
+
     // --- Embeddings (semantic search) — all env-driven, OpenAI-compatible API shape. ---
     /// Enable embedding indexing + semantic/hybrid search.
     pub embedding_enabled: bool,
@@ -196,6 +205,9 @@ impl Default for Config {
             oauth_audience: None,
             oauth_org_claim: "org".to_string(),
             public_url: None,
+            google_client_id: None,
+            session_secret: Secret::new("dev-insecure-session-secret-change-me".into()),
+            session_ttl_secs: 60 * 60 * 24 * 30,
             embedding_enabled: false,
             embedding_base_url: "https://openrouter.ai/api/v1".to_string(),
             embedding_api_key: Secret::new(String::new()),

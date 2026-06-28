@@ -293,6 +293,44 @@ pub struct ApiKeyCreated {
     pub secret: String,
 }
 
+/// One organization a user belongs to, with their role in it (powers the web org switcher).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserOrg {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub role: OrgRole,
+}
+
+/// Result of resolving a verified Google identity to a user + their orgs (JIT provisioning).
+#[derive(Debug, Clone)]
+pub struct ProvisionedUser {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: String,
+    pub orgs: Vec<UserOrg>,
+}
+
+/// A pending org invitation (never includes the token or its hash).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invitation {
+    pub id: Uuid,
+    pub org_id: Uuid,
+    pub email: String,
+    pub role: OrgRole,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub expires_at: Option<OffsetDateTime>,
+}
+
+/// A freshly-created invitation, carrying the one-time accept token (shown only here).
+#[derive(Debug, Clone)]
+pub struct InvitationCreated {
+    pub invitation: Invitation,
+    pub token: String,
+}
+
 /// Public info about a share link (never includes the token or its hash).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareLinkInfo {

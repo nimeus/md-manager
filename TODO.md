@@ -78,8 +78,11 @@ is configured, `/.well-known/oauth-protected-resource` correctly returns 404 —
 - [x] Static audit vs API contract: every page's fields match the Rust responses (whoami/projects/docs/history/search/keys), Next 15 async `params`/`searchParams` handled, all data pages dynamic via `cookies()` so `next build` needs no live API — no code fixes required
 - [x] First-run kit: `.env.local.example`, `.gitignore`, corrected README (the old `curl POST /login` verify was wrong — login is a server action), and `frontend/smoke-test.sh` (bootstraps + seeds + mints the real session cookie + checks the BFF renders API data); API-side of the smoke test validated live
 - [x] **Built & verified**: user ran `npm install && npm run build && npm run start` + `./smoke-test.sh` clean on their Mac (2026-06-28) — the app compiles and the BFF→API path renders live data. (npm was unreachable in the authoring sandbox; built on the user's machine.)
-- [ ] Swap API-key login → Logto OAuth BFF flow
-- [ ] CodeMirror 6 editor; tags/categories UI; org/project switcher; `cmdk`; share links
+## Phase 3.5 — Real SaaS sign-in (Google) — backend ✅, frontend next
+> User chose: **"Sign in with Google" via in-app Auth.js (no Docker)**; Rust+Postgres stays the source of truth for users/orgs/invites. (Supersedes the API-key-paste login + the Logto plan for human auth.)
+- [x] **Backend (migration 0008, built + tested + live-verified):** `users.google_sub`; server-side Google ID-token verification (`apps/api/src/google.rs`, reuses JWKS/RS256, requires verified email); web session tokens (`mss_…`, HS256, `apps/api/src/session.rs`); `POST /v1/auth/google` JIT-provisions a user + personal org + auto-accepts email invites and returns a session token; multi-org **without weakening isolation** (inert-by-default `current_user_id` RLS policies + `begin_user_scoped`); org switcher via `X-Org-Id`; `POST /v1/orgs`, `GET /v1/me/orgs`, invitations (`/v1/invitations` create/list/revoke). 34 tests; integration test proves a stranger still can't see/enter another's org.
+- [ ] **Frontend (next):** Auth.js Google provider → exchange Google id_token at `/v1/auth/google`, store session token in httpOnly cookie; onboarding (name your org), org switcher, invite-teammates UI. Authored here; user builds with npm.
+- [ ] CodeMirror 6 editor; tags/categories UI; `cmdk`; share links UI
 
 ## Phase 4 — Semantic search ✅
 - [x] pgvector `vector(N)` column (env-dim) + HNSW + async embedding worker (owner role, off the write path)

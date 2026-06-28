@@ -52,6 +52,100 @@ pub async fn bootstrap(
         .into_response())
 }
 
+// ---- web sign-in (Google) + orgs + invitations -----------------------------
+
+/// Exchange a Google ID token (verified server-side) for a web session token, provisioning
+/// the user + their orgs just in time. Called only by the Next.js BFF after a Google login.
+pub async fn auth_google(
+    State(s): State<AppState>,
+    Json(req): Json<AuthGoogleReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let google = s
+        .google
+        .as_ref()
+        .ok_or_else(|| ApiError(mdm_core::Error::invalid("Google sign-in is not configured")))?;
+    let identity = google.validate(&req.id_token).await.map_err(|e| {
+        tracing::debug!(%e, "google id_token rejected");
+        ApiError(mdm_core::Error::Unauthorized)
+    })?;
+    let provisioned =
+        s.db.provision_google_user(&identity.sub, &identity.email, &identity.name)
+            .await?;
+    let token = crate::session::issue(
+        &s.session_secret,
+        provisioned.user_id,
+        s.session_ttl_secs,
+        unix_now(),
+    );
+    Ok(Json(json!({
+        "session_token": token,
+        "user": {
+            "id": provisioned.user_id,
+            "email": provisioned.email,
+            "name": provisioned.display_name,
+        },
+        "orgs": provisioned.orgs,
+    })))
+}
+
+/// All organizations the authenticated user belongs to (powers the org switcher).
+pub async fn list_my_orgs(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_user_orgs(ctx.user_id).await?)))
+}
+
+/// Create a new organization; the caller becomes its owner.
+pub async fn create_org(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Json(req): Json<CreateOrgReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let org = s.db.create_org(&ctx, &req.slug, &req.name).await?;
+    Ok(Json(json!(org)))
+}
+
+/// Pending invitations for the caller's current org (owner/admin).
+pub async fn list_invitations(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_invitations(&ctx).await?)))
+}
+
+/// Invite a teammate by email to the caller's current org (owner/admin). Returns the one-time
+/// token so the BFF can build a shareable accept link (and/or email it).
+pub async fn create_invitation(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Json(req): Json<CreateInvitationReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let role = OrgRole::from_db(&req.role)?;
+    let created = s.db.create_invitation(&ctx, &req.email, role).await?;
+    Ok(Json(
+        json!({ "invitation": created.invitation, "token": created.token }),
+    ))
+}
+
+/// Revoke a pending invitation (owner/admin).
+pub async fn revoke_invitation(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    s.db.revoke_invitation(&ctx, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn unix_now() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub async fn whoami(
     State(_s): State<AppState>,
     Auth(ctx): Auth,

@@ -2,9 +2,11 @@
 
 mod dto;
 mod error;
+mod google;
 mod handlers;
 mod mcp;
 mod oauth;
+mod session;
 mod state;
 
 use std::sync::Arc;
@@ -29,8 +31,19 @@ fn router(state: AppState) -> Router {
             get(mcp::protected_resource_metadata),
         )
         .route("/v1/bootstrap", post(handlers::bootstrap))
+        // Web sign-in: BFF exchanges a verified Google ID token for a session token.
+        .route("/v1/auth/google", post(handlers::auth_google))
         .route("/v1/me", get(handlers::whoami))
-        .route("/v1/orgs", get(handlers::list_orgs))
+        .route("/v1/me/orgs", get(handlers::list_my_orgs))
+        .route(
+            "/v1/orgs",
+            get(handlers::list_orgs).post(handlers::create_org),
+        )
+        .route(
+            "/v1/invitations",
+            get(handlers::list_invitations).post(handlers::create_invitation),
+        )
+        .route("/v1/invitations/{id}", delete(handlers::revoke_invitation))
         .route(
             "/v1/projects",
             get(handlers::list_projects).post(handlers::create_project),
@@ -160,6 +173,16 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(model = %settings.model, dims = settings.dimensions, "embedding worker started");
     }
 
+    // Google web sign-in (optional, env-driven).
+    let google = cfg
+        .google_client_id
+        .as_deref()
+        .filter(|id| !id.trim().is_empty())
+        .map(|id| Arc::new(google::GoogleValidator::new(id)));
+    if google.is_some() {
+        tracing::info!("Google web sign-in enabled (POST /v1/auth/google)");
+    }
+
     let state = AppState {
         db,
         bootstrap_token: Arc::new(cfg.admin_bootstrap_token.expose().to_string()),
@@ -168,6 +191,9 @@ async fn main() -> anyhow::Result<()> {
         issuer: cfg.oauth().map(|s| Arc::new(s.issuer)),
         rate_limiter,
         embedder,
+        google,
+        session_secret: Arc::new(cfg.session_secret.expose().to_string()),
+        session_ttl_secs: cfg.session_ttl_secs,
     };
 
     let listener = tokio::net::TcpListener::bind(cfg.api_addr).await?;

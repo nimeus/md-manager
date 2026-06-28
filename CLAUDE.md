@@ -22,7 +22,7 @@ apps/api       (mdm-api)    Axum HTTP API: REST (v1) + remote MCP at POST /mcp +
 apps/mcp       (mdm-mcp)    stdio MCP server — JSON-RPC 2.0, dispatches via HTTP client. Bin: mdm-mcp
                             (tool schemas shared via mdm_core::mcp; api/mcp dispatch to db, stdio dispatches to the API)
 apps/cli       (mdm-cli)    clap CLI. Bin: `mdm`
-migrations/                 sqlx migrations (0001_init.sql, 0002_logto_sub.sql)
+migrations/                 sqlx migrations (0001_init … 0008_web_auth: Google sign-in, multi-org sessions, invitations)
 frontend/                   Next.js 15 web app (BFF over the API; httpOnly cookie holds the key). Build with npm.
 ```
 
@@ -73,7 +73,7 @@ cargo run -p mdm-cli -- --help    # CLI (binary `mdm`)
 ```
 
 ## Env vars
-API (`mdm-api`): `MDM_DATABASE_URL`, `MDM_MIGRATION_DATABASE_URL`, `MDM_API_KEY_PEPPER`, `MDM_ADMIN_BOOTSTRAP_TOKEN`, `MDM_API_ADDR`, `MDM_LOG_FORMAT`, `MDM_DB_MAX_CONNECTIONS`, `MDM_MAX_DOC_BYTES`, `MDM_AUTOSAVE_DEBOUNCE_SECS`.
+API (`mdm-api`): `MDM_DATABASE_URL`, `MDM_MIGRATION_DATABASE_URL`, `MDM_API_KEY_PEPPER`, `MDM_ADMIN_BOOTSTRAP_TOKEN`, `MDM_API_ADDR`, `MDM_LOG_FORMAT`, `MDM_DB_MAX_CONNECTIONS`, `MDM_MAX_DOC_BYTES`, `MDM_AUTOSAVE_DEBOUNCE_SECS`. Web sign-in: `MDM_GOOGLE_CLIENT_ID` (enables `POST /v1/auth/google`), `MDM_SESSION_SECRET`, `MDM_SESSION_TTL_SECS`.
 CLI/MCP: `MDM_API_URL`, `MDM_API_KEY`, `MDM_BOOTSTRAP_TOKEN`. CLI also reads `~/.config/md-manager/config.json` (`mdm auth login`).
 
 ## Notes / known follow-ups

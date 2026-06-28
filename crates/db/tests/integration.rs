@@ -7,6 +7,7 @@
 
 use mdm_core::model::{ActorType, OrgRole, Role, VersionKind};
 use mdm_db::{Db, EmbeddingStore, UpdateOutcome};
+use serial_test::serial;
 use sqlx::postgres::PgPoolOptions;
 
 fn owner_url() -> String {
@@ -63,6 +64,7 @@ async fn connect_with_quota(max_docs_per_project: i64) -> Db {
 }
 
 #[tokio::test]
+#[serial]
 async fn full_db_layer() {
     let db = setup().await;
     db.assert_app_role_not_bypassrls()
@@ -690,4 +692,127 @@ async fn full_db_layer() {
     } else {
         eprintln!("• skipping pgvector test (set MDM_TEST_SUPERUSER_URL to run)");
     }
+}
+
+/// Web SaaS auth: Google JIT provisioning, personal orgs, sessions + the org switcher,
+/// email invitations, and — critically — that the new multi-org reads do NOT weaken
+/// tenant isolation.
+#[tokio::test]
+#[serial]
+async fn web_auth_and_invites() {
+    let db = setup().await;
+
+    // 1) First Google sign-in provisions a user + a personal org they own.
+    let alice = db
+        .provision_google_user("g-alice", "alice@example.com", "Alice")
+        .await
+        .expect("provision alice");
+    assert_eq!(alice.orgs.len(), 1, "personal org auto-created");
+    assert_eq!(alice.orgs[0].role, OrgRole::Owner);
+    let alice_org = alice.orgs[0].id;
+
+    // Idempotent: signing in again resolves the same user + org, no duplicates.
+    let alice2 = db
+        .provision_google_user("g-alice", "alice@example.com", "Alice")
+        .await
+        .unwrap();
+    assert_eq!(alice2.user_id, alice.user_id);
+    assert_eq!(alice2.orgs.len(), 1);
+
+    // 2) A web session resolves the user's role in their org and can use it.
+    let ctx_alice = db.authenticate_session(alice.user_id, None).await.unwrap();
+    assert_eq!(ctx_alice.org_id, alice_org);
+    assert_eq!(ctx_alice.org_role, OrgRole::Owner);
+    let proj = db.create_project(&ctx_alice, "docs", "Docs").await.unwrap();
+    let doc = db
+        .create_document(&ctx_alice, proj.id, "a/b", "AB", "secret content")
+        .await
+        .unwrap();
+
+    // 3) Invite bob; on his first Google sign-in he auto-joins alice's org as member.
+    let inv = db
+        .create_invitation(&ctx_alice, "bob@example.com", OrgRole::Member)
+        .await
+        .expect("invite");
+    assert!(!inv.token.is_empty(), "invite returns a one-time token");
+    assert_eq!(db.list_invitations(&ctx_alice).await.unwrap().len(), 1);
+
+    let bob = db
+        .provision_google_user("g-bob", "bob@example.com", "Bob")
+        .await
+        .unwrap();
+    assert!(
+        bob.orgs
+            .iter()
+            .any(|o| o.id == alice_org && o.role == OrgRole::Member),
+        "bob auto-joined alice's org as member"
+    );
+    assert_eq!(
+        bob.orgs.len(),
+        1,
+        "invited user joins; no personal org made"
+    );
+    assert!(
+        db.list_invitations(&ctx_alice).await.unwrap().is_empty(),
+        "invitation consumed on accept"
+    );
+
+    // Bob (member) can read alice's doc; the RBAC lattice is unchanged.
+    let ctx_bob = db
+        .authenticate_session(bob.user_id, Some(alice_org))
+        .await
+        .unwrap();
+    assert_eq!(ctx_bob.org_role, OrgRole::Member);
+    assert!(db.get_document(&ctx_bob, doc.id).await.is_ok());
+
+    // 4) Create a second org + switch into it (org switcher = org_override).
+    let org2 = db
+        .create_org(&ctx_alice, "acme2", "Acme Two")
+        .await
+        .unwrap();
+    let orgs = db.list_user_orgs(alice.user_id).await.unwrap();
+    assert!(
+        orgs.iter()
+            .any(|o| o.id == org2.id && o.role == OrgRole::Owner),
+        "alice owns the new org"
+    );
+    assert!(orgs.len() >= 2);
+    let ctx_org2 = db
+        .authenticate_session(alice.user_id, Some(org2.id))
+        .await
+        .unwrap();
+    assert!(
+        db.list_projects(&ctx_org2).await.unwrap().is_empty(),
+        "the new org is isolated — no projects leak in"
+    );
+
+    // 5) ISOLATION HOLDS: a stranger in her own org cannot see or enter alice's org.
+    let carol = db
+        .provision_google_user("g-carol", "carol@example.com", "Carol")
+        .await
+        .unwrap();
+    assert!(
+        !db.list_user_orgs(carol.user_id)
+            .await
+            .unwrap()
+            .iter()
+            .any(|o| o.id == alice_org),
+        "carol cannot see alice's org via the multi-org read"
+    );
+    assert!(
+        db.authenticate_session(carol.user_id, Some(alice_org))
+            .await
+            .is_err(),
+        "carol cannot act in an org she's not a member of"
+    );
+
+    // 6) Revoke a pending invitation.
+    let inv2 = db
+        .create_invitation(&ctx_alice, "dave@example.com", OrgRole::Viewer)
+        .await
+        .unwrap();
+    db.revoke_invitation(&ctx_alice, inv2.invitation.id)
+        .await
+        .unwrap();
+    assert!(db.list_invitations(&ctx_alice).await.unwrap().is_empty());
 }

@@ -45,7 +45,7 @@ pub async fn mcp_http(
         .and_then(|v| v.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "));
     let ctx = match token {
-        Some(t) => authenticate(&s, t).await.ok(),
+        Some(t) => authenticate(&s, t, None).await.ok(),
         None => None,
     };
     let Some(ctx) = ctx else {

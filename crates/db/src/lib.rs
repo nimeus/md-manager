@@ -25,6 +25,7 @@ mod org;
 mod rows;
 mod search;
 mod share;
+mod social;
 mod tag;
 
 pub use document::UpdateOutcome;
@@ -122,6 +123,20 @@ impl Db {
     async fn begin_ctx(&self, ctx: &AuthContext) -> sqlx::Result<Transaction<'_, Postgres>> {
         self.begin_scoped(ctx.org_id, ctx.user_id, ctx.actor_type)
             .await
+    }
+
+    /// Begin a transaction scoped to a *user identity* (not an org): sets only
+    /// `app.current_user_id`, leaving `app.current_org_id` unset. Activates the inert-by-default
+    /// `member_self_read` / `org_member_read` policies (migration 0008) so the user can read
+    /// their OWN org memberships across orgs — while every org-keyed data table still returns
+    /// zero rows (org GUC unset). Used for listing a user's orgs before one is selected.
+    async fn begin_user_scoped(&self, user_id: Uuid) -> sqlx::Result<Transaction<'_, Postgres>> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        Ok(tx)
     }
 }
 

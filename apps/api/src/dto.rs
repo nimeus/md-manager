@@ -23,6 +23,29 @@ pub struct CreateProjectReq {
     pub name: String,
 }
 
+/// The Next.js BFF posts a verified Google ID token; the API confirms it independently.
+#[derive(Deserialize)]
+pub struct AuthGoogleReq {
+    pub id_token: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateOrgReq {
+    pub slug: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateInvitationReq {
+    pub email: String,
+    /// admin | member | viewer (default member)
+    #[serde(default = "default_invite_role")]
+    pub role: String,
+}
+fn default_invite_role() -> String {
+    "member".to_string()
+}
+
 #[derive(Deserialize)]
 pub struct CreateDocReq {
     pub path: String,
