@@ -10,6 +10,7 @@ description = "md-manager HTTP API (Axum): web-app BFF target and REST surface f
 mdm-core.workspace = true
 mdm-config.workspace = true
 mdm-db.workspace = true
+mdm-embed.workspace = true
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true

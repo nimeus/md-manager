@@ -355,11 +355,15 @@ impl Client {
         &self,
         query: &str,
         project_id: Option<&str>,
+        mode: Option<&str>,
         limit: Option<i64>,
     ) -> R<Value> {
         let mut q: Vec<(String, String)> = vec![("q".into(), query.to_string())];
         if let Some(p) = project_id {
             q.push(("project_id".into(), p.to_string()));
+        }
+        if let Some(m) = mode {
+            q.push(("mode".into(), m.to_string()));
         }
         if let Some(l) = limit {
             q.push(("limit".into(), l.to_string()));

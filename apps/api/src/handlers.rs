@@ -371,10 +371,50 @@ pub async fn search(
     Auth(ctx): Auth,
     Query(q): Query<SearchQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let hits =
-        s.db.search(&ctx, q.project_id, &q.q, clamp_limit(q.limit, 20))
-            .await?;
+    let mode = q.mode.as_deref().unwrap_or("keyword");
+    let hits = run_search(&s, &ctx, q.project_id, &q.q, mode, clamp_limit(q.limit, 20)).await?;
     Ok(Json(json!(hits)))
+}
+
+/// Shared search dispatch (keyword | semantic | hybrid) used by the REST + MCP surfaces.
+/// Semantic/hybrid embed the query via the configured embeddings provider.
+pub async fn run_search(
+    state: &AppState,
+    ctx: &mdm_core::AuthContext,
+    project_id: Option<Uuid>,
+    query: &str,
+    mode: &str,
+    limit: i64,
+) -> ApiResult<Vec<mdm_core::model::SearchHit>> {
+    match mode {
+        "semantic" | "hybrid" => {
+            let embedder = state.embedder.as_ref().ok_or_else(|| {
+                ApiError(mdm_core::Error::invalid(
+                    "semantic search is not enabled on this server",
+                ))
+            })?;
+            let inputs = [query.to_string()];
+            let mut vectors = embedder.embed(&inputs).await.map_err(|e| {
+                tracing::warn!(error = %e, "query embedding failed");
+                ApiError(mdm_core::Error::Internal(e.to_string()))
+            })?;
+            let qvec = vectors
+                .pop()
+                .ok_or_else(|| ApiError(mdm_core::Error::Internal("empty embedding".into())))?;
+            if mode == "hybrid" {
+                Ok(state
+                    .db
+                    .hybrid_search(ctx, project_id, query, &qvec, limit)
+                    .await?)
+            } else {
+                Ok(state
+                    .db
+                    .semantic_search(ctx, project_id, &qvec, limit)
+                    .await?)
+            }
+        }
+        _ => Ok(state.db.search(ctx, project_id, query, limit).await?),
+    }
 }
 
 // --- api keys --------------------------------------------------------------

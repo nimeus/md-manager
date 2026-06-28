@@ -19,12 +19,14 @@ mod apikey;
 mod auth;
 mod category;
 mod document;
+mod embedding;
 mod org;
 mod rows;
 mod search;
 mod tag;
 
 pub use document::UpdateOutcome;
+pub use embedding::{EmbeddingStore, to_pgvector_literal};
 
 /// Embedded migrations (run as the owner/migrator role).
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");

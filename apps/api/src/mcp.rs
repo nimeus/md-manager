@@ -13,7 +13,7 @@ use axum::{
 };
 use mdm_core::mcp::{PROTOCOL_FALLBACK, SERVER_NAME, tool_definitions};
 use mdm_core::model::{AuthContext, SearchHit, VersionKind};
-use mdm_db::{Db, UpdateOutcome};
+use mdm_db::UpdateOutcome;
 use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -56,13 +56,13 @@ pub async fn mcp_http(
         Value::Array(msgs) => {
             let mut out = Vec::new();
             for m in msgs {
-                if let Some(r) = handle_one(&s.db, &ctx, m).await {
+                if let Some(r) = handle_one(&s, &ctx, m).await {
                     out.push(r);
                 }
             }
             out
         }
-        other => handle_one(&s.db, &ctx, other).await.into_iter().collect(),
+        other => handle_one(&s, &ctx, other).await.into_iter().collect(),
     };
 
     if replies.is_empty() {
@@ -88,7 +88,7 @@ fn challenge(s: &AppState) -> Response {
         .into_response()
 }
 
-async fn handle_one(db: &Db, ctx: &AuthContext, msg: &Value) -> Option<Value> {
+async fn handle_one(state: &AppState, ctx: &AuthContext, msg: &Value) -> Option<Value> {
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
     let id = msg.get("id").cloned()?; // notifications (no id) ⇒ no response
 
@@ -114,7 +114,10 @@ async fn handle_one(db: &Db, ctx: &AuthContext, msg: &Value) -> Option<Value> {
             let params = msg.get("params").cloned().unwrap_or(Value::Null);
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            Some(ok(id, tool_result(call_tool(db, ctx, name, &args).await)))
+            Some(ok(
+                id,
+                tool_result(call_tool(state, ctx, name, &args).await),
+            ))
         }
         other => Some(err(id, -32601, &format!("method not found: {other}"))),
     }
@@ -149,15 +152,27 @@ fn pretty<T: Serialize>(v: &T) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
 
-async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Result<String, String> {
+async fn call_tool(
+    state: &AppState,
+    ctx: &AuthContext,
+    name: &str,
+    args: &Value,
+) -> Result<String, String> {
     match name {
-        "list_projects" => db.list_projects(ctx).await.map(|v| pretty(&v)).map_err(e),
-        "create_project" => db
+        "list_projects" => state
+            .db
+            .list_projects(ctx)
+            .await
+            .map(|v| pretty(&v))
+            .map_err(e),
+        "create_project" => state
+            .db
             .create_project(ctx, arg_str(args, "slug")?, arg_str(args, "name")?)
             .await
             .map(|v| pretty(&v))
             .map_err(e),
-        "list_documents" => db
+        "list_documents" => state
+            .db
             .list_documents(
                 ctx,
                 arg_uuid(args, "project_id")?,
@@ -166,7 +181,8 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .await
             .map(|v| pretty(&v))
             .map_err(e),
-        "create_doc" => db
+        "create_doc" => state
+            .db
             .create_document(
                 ctx,
                 arg_uuid(args, "project_id")?,
@@ -177,12 +193,14 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .await
             .map(|d| format!("Created document {} (version {})", d.id, d.current_version))
             .map_err(e),
-        "get_doc" => db
+        "get_doc" => state
+            .db
             .get_document(ctx, arg_uuid(args, "document_id")?)
             .await
             .map(|d| d.content)
             .map_err(e),
-        "get_doc_by_path" => db
+        "get_doc_by_path" => state
+            .db
             .get_document_by_path(ctx, arg_uuid(args, "project_id")?, arg_str(args, "path")?)
             .await
             .map(|d| d.content)
@@ -197,7 +215,8 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 Some("autosave") => VersionKind::Autosave,
                 _ => VersionKind::Checkpoint,
             };
-            match db
+            match state
+                .db
                 .update_document(ctx, id, arg_str(args, "content")?, expected, kind)
                 .await
                 .map_err(e)?
@@ -216,7 +235,8 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 )),
             }
         }
-        "append_to_doc" => db
+        "append_to_doc" => state
+            .db
             .append_to_document(
                 ctx,
                 arg_uuid(args, "document_id")?,
@@ -225,7 +245,8 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .await
             .map(|d| format!("Appended; now version {}", d.current_version))
             .map_err(e),
-        "move_doc" => db
+        "move_doc" => state
+            .db
             .move_document(
                 ctx,
                 arg_uuid(args, "document_id")?,
@@ -234,7 +255,8 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .await
             .map(|d| format!("Moved to {}", d.path))
             .map_err(e),
-        "delete_doc" => db
+        "delete_doc" => state
+            .db
             .delete_document(ctx, arg_uuid(args, "document_id")?)
             .await
             .map(|_| "Deleted (soft).".to_string())
@@ -245,12 +267,15 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 .get("version")
                 .and_then(Value::as_i64)
                 .ok_or("missing required integer argument: version")?;
-            db.restore_version(ctx, id, version)
+            state
+                .db
+                .restore_version(ctx, id, version)
                 .await
                 .map(|d| format!("Restored; now version {}", d.current_version))
                 .map_err(e)
         }
-        "get_doc_history" => db
+        "get_doc_history" => state
+            .db
             .get_history(ctx, arg_uuid(args, "document_id")?)
             .await
             .map(|v| pretty(&v))
@@ -260,23 +285,35 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 .get("project_id")
                 .and_then(Value::as_str)
                 .and_then(|s| Uuid::parse_str(s).ok());
-            db.search(
+            let mode = args
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("keyword");
+            crate::handlers::run_search(
+                state,
                 ctx,
                 pid,
                 arg_str(args, "query")?,
+                mode,
                 args.get("limit").and_then(Value::as_i64).unwrap_or(20),
             )
             .await
             .map(|hits| format_search(&hits))
-            .map_err(e)
+            .map_err(|ae| e(ae.0))
         }
-        "list_tags" => db.list_tags(ctx).await.map(|v| pretty(&v)).map_err(e),
-        "add_tag" => db
+        "list_tags" => state.db.list_tags(ctx).await.map(|v| pretty(&v)).map_err(e),
+        "add_tag" => state
+            .db
             .add_document_tag(ctx, arg_uuid(args, "document_id")?, arg_str(args, "name")?)
             .await
             .map(|t| format!("Tagged with {}", t.name))
             .map_err(e),
-        "list_categories" => db.list_categories(ctx).await.map(|v| pretty(&v)).map_err(e),
+        "list_categories" => state
+            .db
+            .list_categories(ctx)
+            .await
+            .map(|v| pretty(&v))
+            .map_err(e),
         "create_category" => {
             let parent = match args.get("parent_id").and_then(Value::as_str) {
                 Some(s) => Some(
@@ -284,12 +321,15 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 ),
                 None => None,
             };
-            db.create_category(ctx, parent, arg_str(args, "slug")?, arg_str(args, "name")?)
+            state
+                .db
+                .create_category(ctx, parent, arg_str(args, "slug")?, arg_str(args, "name")?)
                 .await
                 .map(|v| pretty(&v))
                 .map_err(e)
         }
-        "categorize_doc" => db
+        "categorize_doc" => state
+            .db
             .categorize_document(
                 ctx,
                 arg_uuid(args, "document_id")?,

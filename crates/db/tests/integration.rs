@@ -6,7 +6,7 @@
 //! Run: `cargo test -p mdm-db`
 
 use mdm_core::model::{ActorType, OrgRole, Role, VersionKind};
-use mdm_db::{Db, UpdateOutcome};
+use mdm_db::{Db, EmbeddingStore, UpdateOutcome};
 use sqlx::postgres::PgPoolOptions;
 
 fn owner_url() -> String {
@@ -385,4 +385,64 @@ async fn full_db_layer() {
         ),
         "3rd doc must exceed the per-project quota of 2"
     );
+
+    // --- semantic + hybrid search (pgvector) — opt-in via MDM_TEST_SUPERUSER_URL ----
+    // CREATE EXTENSION needs a superuser (and the schema reset dropped it), so this block
+    // runs only when a superuser URL is provided.
+    if let Ok(super_url) = std::env::var("MDM_TEST_SUPERUSER_URL") {
+        let su = sqlx::PgPool::connect(&super_url)
+            .await
+            .expect("connect superuser");
+        sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+            .execute(&su)
+            .await
+            .expect("create extension");
+        su.close().await;
+
+        let store = EmbeddingStore::connect(&owner_url(), 3)
+            .await
+            .expect("embedding store");
+        let sdoc = db
+            .create_document(&ctx_a, proj.id, "vec/doc", "Vec", "alpha beta gamma")
+            .await
+            .expect("vec doc");
+
+        // Embed every pending chunk: the "alpha" one as [1,0,0], everything else as [0,1,0].
+        let pending = store.pending(1000).await.expect("pending");
+        assert!(
+            pending.iter().any(|(_, t)| t.contains("alpha")),
+            "new chunk pending"
+        );
+        for (cid, text) in &pending {
+            let v: [f32; 3] = if text.contains("alpha") {
+                [1.0, 0.0, 0.0]
+            } else {
+                [0.0, 1.0, 0.0]
+            };
+            store.store(*cid, &v).await.expect("store embedding");
+        }
+
+        // A query near [1,0,0] must rank the alpha doc first (tenant-scoped to org A).
+        let hits = db
+            .semantic_search(&ctx_a, None, &[0.9, 0.1, 0.0], 5)
+            .await
+            .expect("semantic");
+        assert_eq!(
+            hits.first().map(|h| h.document_id),
+            Some(sdoc.id),
+            "nearest doc is alpha"
+        );
+
+        let hybrid = db
+            .hybrid_search(&ctx_a, None, "alpha", &[0.9, 0.1, 0.0], 5)
+            .await
+            .expect("hybrid");
+        assert!(
+            hybrid.iter().any(|h| h.document_id == sdoc.id),
+            "hybrid finds the alpha doc"
+        );
+        eprintln!("✓ pgvector semantic + hybrid search verified");
+    } else {
+        eprintln!("• skipping pgvector test (set MDM_TEST_SUPERUSER_URL to run)");
+    }
 }

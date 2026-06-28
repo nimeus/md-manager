@@ -68,6 +68,42 @@ pub struct Config {
     /// Public base URL of this MCP resource server (used in discovery metadata).
     /// Defaults to `http://<api_addr>`.
     pub public_url: Option<String>,
+
+    // --- Embeddings (semantic search) — all env-driven, OpenAI-compatible API shape. ---
+    /// Enable embedding indexing + semantic/hybrid search.
+    pub embedding_enabled: bool,
+    /// Embeddings API base URL (OpenAI-compatible). Defaults to OpenRouter; override for any provider.
+    pub embedding_base_url: String,
+    /// Bearer API key for the embeddings provider.
+    pub embedding_api_key: Secret,
+    /// Embedding model id (e.g. an OpenRouter / OpenAI embedding model).
+    pub embedding_model: String,
+    /// Embedding vector dimensions (must match the model). Sets the pgvector column width.
+    pub embedding_dimensions: i32,
+    /// Max chunks per embedding API request.
+    pub embedding_batch_size: i64,
+    /// Embedding HTTP request timeout (seconds).
+    pub embedding_timeout_secs: u64,
+    /// How often the background embedding worker polls for unembedded chunks (seconds).
+    pub embedding_worker_interval_secs: u64,
+    /// Optional OpenRouter `HTTP-Referer` header (app attribution).
+    pub embedding_referer: Option<String>,
+    /// Optional OpenRouter `X-Title` header (app attribution).
+    pub embedding_title: Option<String>,
+}
+
+/// Resolved embedding settings (present only when enabled + fully configured).
+#[derive(Debug, Clone)]
+pub struct EmbeddingSettings {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub dimensions: i32,
+    pub batch_size: i64,
+    pub timeout_secs: u64,
+    pub worker_interval_secs: u64,
+    pub referer: Option<String>,
+    pub title: Option<String>,
 }
 
 /// Resolved OAuth resource-server settings.
@@ -103,6 +139,28 @@ impl Config {
             .clone()
             .unwrap_or_else(|| format!("http://{}", self.api_addr))
     }
+
+    /// Embedding settings, if enabled and fully configured (model + api key + dimensions).
+    pub fn embedding(&self) -> Option<EmbeddingSettings> {
+        if !self.embedding_enabled
+            || self.embedding_model.trim().is_empty()
+            || self.embedding_api_key.expose().trim().is_empty()
+            || self.embedding_dimensions <= 0
+        {
+            return None;
+        }
+        Some(EmbeddingSettings {
+            base_url: self.embedding_base_url.trim_end_matches('/').to_string(),
+            api_key: self.embedding_api_key.expose().to_string(),
+            model: self.embedding_model.clone(),
+            dimensions: self.embedding_dimensions,
+            batch_size: self.embedding_batch_size.max(1),
+            timeout_secs: self.embedding_timeout_secs,
+            worker_interval_secs: self.embedding_worker_interval_secs.max(1),
+            referer: self.embedding_referer.clone(),
+            title: self.embedding_title.clone(),
+        })
+    }
 }
 
 impl Default for Config {
@@ -128,6 +186,16 @@ impl Default for Config {
             oauth_audience: None,
             oauth_org_claim: "org".to_string(),
             public_url: None,
+            embedding_enabled: false,
+            embedding_base_url: "https://openrouter.ai/api/v1".to_string(),
+            embedding_api_key: Secret::new(String::new()),
+            embedding_model: String::new(),
+            embedding_dimensions: 1536,
+            embedding_batch_size: 32,
+            embedding_timeout_secs: 30,
+            embedding_worker_interval_secs: 10,
+            embedding_referer: None,
+            embedding_title: None,
         }
     }
 }

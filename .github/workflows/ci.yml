@@ -14,7 +14,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        # pgvector image so the semantic-search test can CREATE EXTENSION vector.
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -32,6 +33,8 @@ jobs:
       # Integration tests (mdm-db) read these; default dev creds, CI Postgres.
       MDM_TEST_OWNER_URL: postgres://md_owner:md_owner_dev@localhost:5432/md_manager_test
       MDM_TEST_APP_URL: postgres://md_app:md_app_dev@localhost:5432/md_manager_test
+      # Superuser URL enables the pgvector semantic/hybrid search test (CREATE EXTENSION).
+      MDM_TEST_SUPERUSER_URL: postgres://postgres:postgres@localhost:5432/md_manager_test
 
     steps:
       - uses: actions/checkout@v4

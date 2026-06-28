@@ -14,6 +14,7 @@ mdm-core = { path = "crates/core" }
 mdm-db = { path = "crates/db" }
 mdm-config = { path = "crates/config" }
 mdm-client = { path = "crates/client" }
+mdm-embed = { path = "crates/embed" }
 
 # Shared third-party (versions resolved on first build; wired into more crates as layers land)
 thiserror = "2"

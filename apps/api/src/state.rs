@@ -9,6 +9,7 @@ use axum::{
 use governor::DefaultKeyedRateLimiter;
 use mdm_core::AuthContext;
 use mdm_db::Db;
+use mdm_embed::Embedder;
 use uuid::Uuid;
 
 use crate::error::ApiError;
@@ -29,6 +30,8 @@ pub struct AppState {
     pub issuer: Option<Arc<String>>,
     /// Per-user request rate limiter.
     pub rate_limiter: Arc<RateLimiter>,
+    /// Embeddings client (Some when semantic search is configured/enabled).
+    pub embedder: Option<Arc<Embedder>>,
 }
 
 /// Resolve a bearer token to an [`AuthContext`]:

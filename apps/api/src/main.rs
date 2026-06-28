@@ -125,6 +125,34 @@ async fn main() -> anyhow::Result<()> {
     if oauth.is_some() {
         tracing::info!("OAuth resource server enabled for the /mcp endpoint");
     }
+
+    // Embeddings (semantic search) — optional, fully env-driven.
+    let embedder = cfg.embedding().map(|s| {
+        Arc::new(mdm_embed::Embedder::new(
+            s.base_url,
+            s.api_key,
+            s.model,
+            s.dimensions as usize,
+            std::time::Duration::from_secs(s.timeout_secs),
+            s.referer,
+            s.title,
+        ))
+    });
+    if let (Some(settings), Some(emb)) = (cfg.embedding(), embedder.clone()) {
+        let store = mdm_db::EmbeddingStore::connect(
+            cfg.migration_database_url.expose(),
+            settings.dimensions,
+        )
+        .await?;
+        spawn_embedding_worker(
+            store,
+            emb,
+            settings.batch_size,
+            settings.worker_interval_secs,
+        );
+        tracing::info!(model = %settings.model, dims = settings.dimensions, "embedding worker started");
+    }
+
     let state = AppState {
         db,
         bootstrap_token: Arc::new(cfg.admin_bootstrap_token.expose().to_string()),
@@ -132,10 +160,49 @@ async fn main() -> anyhow::Result<()> {
         resource_url: Arc::new(cfg.public_base_url()),
         issuer: cfg.oauth().map(|s| Arc::new(s.issuer)),
         rate_limiter,
+        embedder,
     };
 
     let listener = tokio::net::TcpListener::bind(cfg.api_addr).await?;
     tracing::info!(addr = %cfg.api_addr, "md-manager API listening");
     axum::serve(listener, router(state)).await?;
     Ok(())
+}
+
+/// Background task: embed chunks lacking an embedding, in batches, off the write path.
+fn spawn_embedding_worker(
+    store: mdm_db::EmbeddingStore,
+    embedder: Arc<mdm_embed::Embedder>,
+    batch: i64,
+    interval_secs: u64,
+) {
+    let interval = std::time::Duration::from_secs(interval_secs);
+    tokio::spawn(async move {
+        loop {
+            match store.pending(batch).await {
+                Ok(chunks) if !chunks.is_empty() => {
+                    let texts: Vec<String> = chunks.iter().map(|(_, t)| t.clone()).collect();
+                    match embedder.embed(&texts).await {
+                        Ok(vectors) if vectors.len() == chunks.len() => {
+                            for ((cid, _), vec) in chunks.iter().zip(vectors) {
+                                if let Err(e) = store.store(*cid, &vec).await {
+                                    tracing::error!(error = %e, "failed to store embedding");
+                                }
+                            }
+                        }
+                        Ok(_) => tracing::warn!("embedding count mismatch; skipping batch"),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "embedding API call failed; backing off");
+                            tokio::time::sleep(interval).await;
+                        }
+                    }
+                }
+                Ok(_) => tokio::time::sleep(interval).await,
+                Err(e) => {
+                    tracing::error!(error = %e, "embedding worker query failed");
+                    tokio::time::sleep(interval).await;
+                }
+            }
+        }
+    });
 }

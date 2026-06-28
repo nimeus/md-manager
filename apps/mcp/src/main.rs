@@ -235,6 +235,7 @@ async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, 
             .search(
                 arg_str(args, "query")?,
                 args.get("project_id").and_then(Value::as_str),
+                args.get("mode").and_then(Value::as_str),
                 args.get("limit").and_then(Value::as_i64),
             )
             .await

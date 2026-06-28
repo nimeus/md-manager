@@ -91,6 +91,8 @@ pub struct SearchQuery {
     pub q: String,
     pub project_id: Option<Uuid>,
     pub limit: Option<i64>,
+    /// keyword (default) | semantic | hybrid
+    pub mode: Option<String>,
 }
 
 #[derive(Deserialize)]

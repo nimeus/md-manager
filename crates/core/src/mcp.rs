@@ -90,8 +90,11 @@ pub fn tool_definitions() -> Value {
         ),
         tool(
             "search_docs",
-            "Keyword full-text search across documents (optionally one project).",
-            json!({ "query": { "type": "string" }, "project_id": { "type": "string" }, "limit": { "type": "integer" } }),
+            "Search documents (optionally one project). mode: 'keyword' (default, full-text), \
+             'semantic' (vector), or 'hybrid' (both, RRF). Semantic/hybrid need embeddings enabled.",
+            json!({ "query": { "type": "string" }, "project_id": { "type": "string" },
+                    "mode": { "type": "string", "enum": ["keyword", "semantic", "hybrid"] },
+                    "limit": { "type": "integer" } }),
             &["query"]
         ),
         tool(

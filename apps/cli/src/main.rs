@@ -231,6 +231,9 @@ struct SearchArgs {
     query: String,
     #[arg(long)]
     project: Option<String>,
+    /// keyword (default) | semantic | hybrid
+    #[arg(long)]
+    mode: Option<String>,
     #[arg(long)]
     limit: Option<i64>,
 }
@@ -532,7 +535,9 @@ async fn run(cli: Cli) -> Result<()> {
                 Some(p) => Some(resolve_project(&c, p).await?),
                 None => None,
             };
-            let v = c.search(&a.query, pid.as_deref(), a.limit).await?;
+            let v = c
+                .search(&a.query, pid.as_deref(), a.mode.as_deref(), a.limit)
+                .await?;
             if cli.json {
                 print_json(&v);
             } else {

@@ -74,9 +74,13 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [ ] Swap API-key login → Logto OAuth BFF flow
 - [ ] CodeMirror 6 editor; tags/categories UI; org/project switcher; `cmdk`; share links
 
-## Phase 4 — Semantic search
-- [ ] pgvector + `embedding halfvec(1024)` + HNSW + async embedding worker
-- [ ] `search_docs` `mode=semantic|hybrid` (RRF)
+## Phase 4 — Semantic search ✅
+- [x] pgvector `vector(N)` column (env-dim) + HNSW + async embedding worker (owner role, off the write path)
+- [x] OpenAI-compatible embeddings client (`mdm-embed`), all env-driven, **OpenRouter default** ([docs/embeddings.md](docs/embeddings.md))
+- [x] `search` `mode=keyword|semantic|hybrid` (RRF) across REST/CLI/MCP; tenant + deny-grant respected
+- [x] Verified: pgvector semantic+hybrid (deterministic vectors) + live OpenRouter wiring (needs a real key to embed)
+- [ ] Embedding-cost controls: per-chunk content_hash dedup (skip re-embed unchanged), batch backoff/dead-letter
+- [ ] `embedding-model`/`dims` change migration helper (currently manual column drop)
 
 ## Phase 5 — Realtime + scale
 - [ ] Yjs/CRDT over Rust websocket; OTel + alerting; version compaction; SSO
