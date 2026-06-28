@@ -156,12 +156,7 @@ async fn main() -> anyhow::Result<()> {
             settings.dimensions,
         )
         .await?;
-        spawn_embedding_worker(
-            store,
-            emb,
-            settings.batch_size,
-            settings.worker_interval_secs,
-        );
+        spawn_embedding_worker(store, emb, &settings);
         tracing::info!(model = %settings.model, dims = settings.dimensions, "embedding worker started");
     }
 
@@ -182,13 +177,20 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Background task: embed chunks lacking an embedding, in batches, off the write path.
+///
+/// The queue is self-healing: a failed batch is retried one chunk at a time so a single
+/// poison chunk can't block its batch-mates; every failure records exponential backoff (so a
+/// persistently-failing chunk stops being re-fetched immediately) and is dead-lettered after
+/// `max_attempts` consecutive failures so it can never starve the queue.
 fn spawn_embedding_worker(
     store: mdm_db::EmbeddingStore,
     embedder: Arc<mdm_embed::Embedder>,
-    batch: i64,
-    interval_secs: u64,
+    settings: &mdm_config::EmbeddingSettings,
 ) {
-    let interval = std::time::Duration::from_secs(interval_secs);
+    let interval = std::time::Duration::from_secs(settings.worker_interval_secs);
+    let batch = settings.batch_size;
+    let max_attempts = settings.max_attempts;
+    let backoff_base = settings.backoff_base_secs;
     tokio::spawn(async move {
         loop {
             // Reuse embeddings for identical content before calling the provider.
@@ -208,10 +210,26 @@ fn spawn_embedding_worker(
                                 }
                             }
                         }
-                        Ok(_) => tracing::warn!("embedding count mismatch; skipping batch"),
-                        Err(e) => {
-                            tracing::warn!(error = %e, "embedding API call failed; backing off");
-                            tokio::time::sleep(interval).await;
+                        // Ambiguous (count mismatch) or failed batch call: isolate each chunk
+                        // so one bad input can't penalise the rest. Recovers automatically
+                        // when the provider does; dead-letters only the genuinely poison ones.
+                        outcome => {
+                            match &outcome {
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "embedding batch failed; isolating chunks")
+                                }
+                                Ok(_) => {
+                                    tracing::warn!("embedding count mismatch; isolating chunks")
+                                }
+                            }
+                            embed_individually(
+                                &store,
+                                &embedder,
+                                &chunks,
+                                max_attempts,
+                                backoff_base,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -223,4 +241,40 @@ fn spawn_embedding_worker(
             }
         }
     });
+}
+
+/// Retry a failed batch one chunk at a time: store the ones that embed, and record a
+/// backed-off (eventually dead-lettered) failure for the ones that don't.
+async fn embed_individually(
+    store: &mdm_db::EmbeddingStore,
+    embedder: &mdm_embed::Embedder,
+    chunks: &[(uuid::Uuid, String)],
+    max_attempts: i32,
+    backoff_base: i64,
+) {
+    for (cid, text) in chunks {
+        match embedder.embed(std::slice::from_ref(text)).await {
+            Ok(vectors) if vectors.len() == 1 => {
+                if let Err(e) = store.store(*cid, &vectors[0]).await {
+                    tracing::error!(error = %e, "failed to store embedding");
+                }
+            }
+            outcome => {
+                let msg = match &outcome {
+                    Err(e) => e.to_string(),
+                    Ok(_) => "empty embedding response".to_string(),
+                };
+                match store
+                    .mark_failed(&[*cid], &msg, max_attempts, backoff_base)
+                    .await
+                {
+                    Ok(dead) if dead > 0 => {
+                        tracing::error!(chunk = %cid, error = %msg, "embedding dead-lettered after repeated failures")
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::error!(error = %e, "failed to record embedding failure"),
+                }
+            }
+        }
+    }
 }

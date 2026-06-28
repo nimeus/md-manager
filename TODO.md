@@ -82,7 +82,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] `search` `mode=keyword|semantic|hybrid` (RRF) across REST/CLI/MCP; tenant + deny-grant respected
 - [x] Verified: pgvector semantic+hybrid (deterministic vectors) + live OpenRouter wiring (needs a real key to embed)
 - [x] Embedding-cost dedup: per-chunk `content_hash` (migration 0006) — reindex preserves unchanged chunks' embeddings (diff, not delete-all), worker copies embeddings for identical content; verified (editing one section keeps the other's embedding)
-- [ ] Embedding backoff: `next_attempt_at` / dead-letter for repeatedly-failing chunks (worker currently retries on interval)
+- [x] Embedding backoff + dead-letter (migration 0007): per-chunk `embed_attempts`/`embed_next_attempt_at`/`embed_failed`/`embed_last_error`; `pending()` skips backed-off/dead chunks; worker isolates a failed batch one-chunk-at-a-time (poison input can't block batch-mates); env-driven `BACKOFF_BASE_SECS`/`MAX_ATTEMPTS`; verified (backoff hides chunk, 3rd failure dead-letters, store clears it)
 - [ ] `embedding-model`/`dims` change migration helper (currently manual column drop)
 
 ## Phase 5 — Realtime + scale

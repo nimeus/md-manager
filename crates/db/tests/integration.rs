@@ -549,7 +549,82 @@ async fn full_db_layer() {
             1,
             "editing section B keeps section A's embedding (only B re-queued)"
         );
-        eprintln!("✓ pgvector semantic + hybrid + embedding-dedup verified");
+
+        // Backoff + dead-letter: a chunk that keeps failing must drop out of `pending`
+        // immediately (backoff) and be dead-lettered after max_attempts so it can't starve
+        // the queue. base=3600s keeps the backoff window well past this test's runtime.
+        db.create_document(&ctx_a, proj.id, "dead/doc", "Dead", "poison chunk content")
+            .await
+            .expect("dead doc");
+        let dead_chunk = store
+            .pending(1000)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|(_, t)| t.contains("poison"))
+            .map(|(id, _)| id)
+            .expect("poison chunk is pending before any failure");
+        let dl_before = store.dead_letter_count().await.unwrap();
+
+        // First failure: not yet dead, but backoff removes it from the ready queue.
+        assert_eq!(
+            store
+                .mark_failed(&[dead_chunk], "boom", 3, 3600)
+                .await
+                .unwrap(),
+            0,
+            "one failure does not dead-letter (max_attempts=3)"
+        );
+        assert!(
+            !store
+                .pending(1000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|(id, _)| *id == dead_chunk),
+            "a backed-off chunk is skipped by pending"
+        );
+
+        // Two more failures reach max_attempts → dead-lettered on the third.
+        assert_eq!(
+            store
+                .mark_failed(&[dead_chunk], "boom", 3, 3600)
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            store
+                .mark_failed(&[dead_chunk], "boom", 3, 3600)
+                .await
+                .unwrap(),
+            1,
+            "third failure crosses into the dead-letter state"
+        );
+        assert_eq!(
+            store.dead_letter_count().await.unwrap(),
+            dl_before + 1,
+            "exactly one new dead-lettered chunk"
+        );
+        assert!(
+            !store
+                .pending(1000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|(id, _)| *id == dead_chunk),
+            "a dead-lettered chunk never reappears in pending"
+        );
+
+        // Recovery clears the failure state: storing an embedding un-dead-letters the row.
+        store.store(dead_chunk, &[0.0, 0.0, 1.0]).await.unwrap();
+        assert_eq!(
+            store.dead_letter_count().await.unwrap(),
+            dl_before,
+            "storing an embedding clears the dead-letter flag"
+        );
+
+        eprintln!("✓ pgvector semantic + hybrid + dedup + backoff/dead-letter verified");
     } else {
         eprintln!("• skipping pgvector test (set MDM_TEST_SUPERUSER_URL to run)");
     }

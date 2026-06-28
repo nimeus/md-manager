@@ -46,11 +46,17 @@ impl EmbeddingStore {
         Ok(Self { pool })
     }
 
-    /// Fetch up to `limit` chunks lacking an embedding (text = heading breadcrumb + content).
+    /// Fetch up to `limit` chunks that are due to be embedded (text = heading breadcrumb +
+    /// content). Skips dead-lettered chunks and chunks whose backoff window hasn't elapsed;
+    /// never-attempted chunks (`embed_next_attempt_at IS NULL`) are served first.
     pub async fn pending(&self, limit: i64) -> anyhow::Result<Vec<(Uuid, String)>> {
         let rows: Vec<(Uuid, String)> = sqlx::query_as(
             "SELECT id, (coalesce(heading_path,'') || ' ' || content)
-             FROM doc_chunks WHERE embedding IS NULL ORDER BY id LIMIT $1",
+             FROM doc_chunks
+             WHERE embedding IS NULL AND NOT embed_failed
+               AND (embed_next_attempt_at IS NULL OR embed_next_attempt_at <= now())
+             ORDER BY embed_next_attempt_at NULLS FIRST, id
+             LIMIT $1",
         )
         .bind(limit)
         .fetch_all(&self.pool)
@@ -60,13 +66,67 @@ impl EmbeddingStore {
     }
 
     pub async fn store(&self, chunk_id: Uuid, vector: &[f32]) -> anyhow::Result<()> {
-        sqlx::query("UPDATE doc_chunks SET embedding = $1::vector WHERE id = $2")
-            .bind(to_pgvector_literal(vector))
-            .bind(chunk_id)
-            .execute(&self.pool)
-            .await
-            .context("storing chunk embedding")?;
+        // On success, clear any prior failure bookkeeping so the row is fully resolved.
+        sqlx::query(
+            "UPDATE doc_chunks
+             SET embedding = $1::vector, embed_next_attempt_at = NULL,
+                 embed_last_error = NULL, embed_failed = false
+             WHERE id = $2",
+        )
+        .bind(to_pgvector_literal(vector))
+        .bind(chunk_id)
+        .execute(&self.pool)
+        .await
+        .context("storing chunk embedding")?;
         Ok(())
+    }
+
+    /// Record a failed embedding attempt for `ids`: increment the attempt count, store the
+    /// error, and push the next attempt out by exponential backoff (`base · 2^attempts`,
+    /// capped at 2^10·base). When the count reaches `max_attempts` (and it's > 0) the chunk
+    /// is dead-lettered (`embed_failed = true`) so `pending` skips it forever. Returns the
+    /// number of rows that crossed into the dead-letter state on this call.
+    pub async fn mark_failed(
+        &self,
+        ids: &[Uuid],
+        error: &str,
+        max_attempts: i32,
+        base_backoff_secs: i64,
+    ) -> anyhow::Result<u64> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let dead_lettered: i64 = sqlx::query_scalar(
+            "WITH updated AS (
+               UPDATE doc_chunks
+               SET embed_attempts = embed_attempts + 1,
+                   embed_last_error = $2,
+                   embed_failed = ($3 > 0 AND embed_attempts + 1 >= $3),
+                   embed_next_attempt_at =
+                     now() + ($4 * power(2, least(embed_attempts, 10)))::double precision
+                             * interval '1 second'
+               WHERE id = ANY($1) AND embedding IS NULL
+               RETURNING embed_failed
+             )
+             SELECT count(*) FROM updated WHERE embed_failed",
+        )
+        .bind(ids)
+        .bind(error)
+        .bind(max_attempts)
+        .bind(base_backoff_secs)
+        .fetch_one(&self.pool)
+        .await
+        .context("recording failed embedding attempts")?;
+        Ok(dead_lettered as u64)
+    }
+
+    /// Count of dead-lettered chunks (gave up after repeated failures) — for ops/tests.
+    pub async fn dead_letter_count(&self) -> anyhow::Result<i64> {
+        Ok(
+            sqlx::query_scalar("SELECT count(*) FROM doc_chunks WHERE embed_failed")
+                .fetch_one(&self.pool)
+                .await?,
+        )
     }
 
     pub async fn count_unembedded(&self) -> anyhow::Result<i64> {
@@ -132,6 +192,15 @@ async fn ensure_schema(pool: &PgPool, dims: i32) -> anyhow::Result<()> {
     .execute(pool)
     .await
     .context("creating HNSW index")?;
+    // Speeds up the worker's pending() scan: only live, not-yet-embedded chunks.
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS doc_chunks_pending
+         ON doc_chunks (embed_next_attempt_at)
+         WHERE embedding IS NULL AND NOT embed_failed",
+    )
+    .execute(pool)
+    .await
+    .context("creating pending-chunks index")?;
     Ok(())
 }
 

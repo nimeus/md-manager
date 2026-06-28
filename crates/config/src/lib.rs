@@ -86,6 +86,12 @@ pub struct Config {
     pub embedding_timeout_secs: u64,
     /// How often the background embedding worker polls for unembedded chunks (seconds).
     pub embedding_worker_interval_secs: u64,
+    /// Base seconds for exponential backoff between retries of a failing chunk
+    /// (delay = base · 2^attempts, capped). Keeps one poison chunk from looping.
+    pub embedding_backoff_base_secs: i64,
+    /// After this many consecutive failures a chunk is dead-lettered (skipped, surfaced
+    /// to ops) so it can never starve the queue. 0 disables dead-lettering (retry forever).
+    pub embedding_max_attempts: i32,
     /// Optional OpenRouter `HTTP-Referer` header (app attribution).
     pub embedding_referer: Option<String>,
     /// Optional OpenRouter `X-Title` header (app attribution).
@@ -102,6 +108,8 @@ pub struct EmbeddingSettings {
     pub batch_size: i64,
     pub timeout_secs: u64,
     pub worker_interval_secs: u64,
+    pub backoff_base_secs: i64,
+    pub max_attempts: i32,
     pub referer: Option<String>,
     pub title: Option<String>,
 }
@@ -157,6 +165,8 @@ impl Config {
             batch_size: self.embedding_batch_size.max(1),
             timeout_secs: self.embedding_timeout_secs,
             worker_interval_secs: self.embedding_worker_interval_secs.max(1),
+            backoff_base_secs: self.embedding_backoff_base_secs.max(1),
+            max_attempts: self.embedding_max_attempts.max(0),
             referer: self.embedding_referer.clone(),
             title: self.embedding_title.clone(),
         })
@@ -194,6 +204,8 @@ impl Default for Config {
             embedding_batch_size: 32,
             embedding_timeout_secs: 30,
             embedding_worker_interval_secs: 10,
+            embedding_backoff_base_secs: 30,
+            embedding_max_attempts: 8,
             embedding_referer: None,
             embedding_title: None,
         }

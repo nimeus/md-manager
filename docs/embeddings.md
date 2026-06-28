@@ -42,13 +42,34 @@ across orgs (a trusted system process; the app role `md_app` stays RLS-scoped).
 | `MDM_EMBEDDING_DIMENSIONS` | `1536` | **Must match the model's output.** Sets the pgvector column width |
 | `MDM_EMBEDDING_BATCH_SIZE` | `32` | Chunks per embedding request |
 | `MDM_EMBEDDING_TIMEOUT_SECS` | `30` | HTTP timeout |
-| `MDM_EMBEDDING_WORKER_INTERVAL_SECS` | `10` | Poll interval when idle / backoff on provider error |
+| `MDM_EMBEDDING_WORKER_INTERVAL_SECS` | `10` | Poll interval when idle |
+| `MDM_EMBEDDING_BACKOFF_BASE_SECS` | `30` | Retry-backoff base; a failing chunk waits `base · 2^attempts` (capped at `2^10·base`) |
+| `MDM_EMBEDDING_MAX_ATTEMPTS` | `8` | Dead-letter a chunk after this many consecutive failures (`0` = retry forever) |
 | `MDM_EMBEDDING_REFERER` | — | Optional OpenRouter `HTTP-Referer` (app attribution) |
 | `MDM_EMBEDDING_TITLE` | — | Optional OpenRouter `X-Title` (app attribution) |
 
 Semantic/hybrid search require all three of `ENABLED`, `API_KEY`, and `MODEL` to be set
 (plus a positive `DIMENSIONS`); otherwise the server runs keyword-only and `mode=semantic`
 returns a clear "not enabled" error.
+
+### Worker resilience (backoff + dead-letter)
+
+The background worker is self-healing, so one bad chunk can't stall indexing:
+
+- **Per-chunk backoff.** Each failure stamps `embed_next_attempt_at = now() + base·2^attempts`,
+  so a failing chunk drops out of the ready queue immediately and the worker moves on to
+  fresh chunks instead of re-fetching the same head-of-line failure every interval.
+- **Batch isolation.** If a whole batch request fails (or returns a mismatched count), the
+  worker retries that batch **one chunk at a time**, so a single poison input can't penalise
+  its batch-mates — the good chunks still embed.
+- **Dead-letter.** After `MAX_ATTEMPTS` consecutive failures a chunk is flagged
+  `embed_failed` and skipped permanently (logged at `error` with the last provider message),
+  so it never starves the queue. Storing an embedding clears all of this bookkeeping.
+
+Because backoff uses a long-ish base with a generous attempt budget, a transient provider
+outage simply pauses and resumes automatically; only a chunk that fails across the whole
+window is dead-lettered. Re-saving a document re-chunks it, which clears the flag and
+re-queues the content fresh.
 
 ## 3. Use
 
