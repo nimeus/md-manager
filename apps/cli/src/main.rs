@@ -7,7 +7,7 @@ mod config;
 use std::io::{IsTerminal, Read};
 
 use anyhow::{Context, Result, anyhow, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use mdm_client::{Client, UpdateResult};
 use serde_json::Value;
 
@@ -92,6 +92,11 @@ enum Cmd {
     Keys {
         #[command(subcommand)]
         cmd: KeysCmd,
+    },
+    /// Print a shell completion script (bash, zsh, fish, powershell, elvish)
+    Completions {
+        /// Target shell
+        shell: clap_complete::Shell,
     },
 }
 
@@ -409,6 +414,10 @@ async fn resolve_project(c: &Client, p: &str) -> Result<String> {
 
 async fn run(cli: Cli) -> Result<()> {
     match &cli.cmd {
+        // No network/auth needed — print the script and exit.
+        Cmd::Completions { shell } => {
+            clap_complete::generate(*shell, &mut Cli::command(), "mdm", &mut std::io::stdout());
+        }
         Cmd::Bootstrap(a) => {
             let (url, _) = resolve_creds(&cli);
             let token = a

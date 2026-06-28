@@ -45,6 +45,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] MCP/CLI parity: retrieve documents by tag (`list_docs_by_tag`) and by category (`list_docs_by_category`) — added to both MCP surfaces (stdio + HTTP); verified live over `/mcp` (tools/list = 20; both return the doc)
 - [x] **CLI `mdm`**: auth/whoami/org/proj/doc/search/tag/keys; raw-markdown to stdout; stdin/-m/--file body
 - [x] `mdm-client`: shared async HTTP client (used by MCP + CLI)
+- [x] CLI shell completions (`mdm completions <bash|zsh|fish|powershell|elvish>`, via `clap_complete`) — verified (zsh `#compdef`, bash script, bad shell rejected)
 - [x] Integration tests vs Postgres: tenant isolation, concurrency, RBAC, search, key revoke
 - [x] End-to-end verified: CLI + MCP agent loops, cross-surface consistency
 - [x] **Categories** (org-scoped, hierarchical, cross-project) + document_categories — migration 0003, db, REST, CLI (`mdm cat`), MCP, integration tests
