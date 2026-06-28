@@ -2,8 +2,8 @@
 //! Enum columns are stored as text and converted here.
 
 use mdm_core::model::{
-    ActorType, ApiKeyInfo, Category, Document, DocumentSummary, DocumentVersion, Organization,
-    OrgRole, Project, SearchHit, Tag, Team, User, VersionKind, VersionSummary,
+    ActorType, ApiKeyInfo, Category, Document, DocumentSummary, DocumentVersion, OrgRole,
+    Organization, Project, SearchHit, Tag, Team, User, VersionKind, VersionSummary,
 };
 use mdm_core::{Error, Result};
 use sqlx::FromRow;

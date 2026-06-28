@@ -10,8 +10,9 @@ use mdm_db::{Db, UpdateOutcome};
 use sqlx::postgres::PgPoolOptions;
 
 fn owner_url() -> String {
-    std::env::var("MDM_TEST_OWNER_URL")
-        .unwrap_or_else(|_| "postgres://md_owner:md_owner_dev@localhost:5432/md_manager_test".into())
+    std::env::var("MDM_TEST_OWNER_URL").unwrap_or_else(|_| {
+        "postgres://md_owner:md_owner_dev@localhost:5432/md_manager_test".into()
+    })
 }
 fn app_url() -> String {
     std::env::var("MDM_TEST_APP_URL")
@@ -35,9 +36,30 @@ async fn setup() -> Db {
     admin.close().await;
 
     Db::run_migrations(&owner_url()).await.expect("migrate");
-    Db::connect(&app_url(), 5, "test-pepper".into(), 1_000_000, 30)
-        .await
-        .expect("connect app")
+    Db::connect(
+        &app_url(),
+        5,
+        "test-pepper".into(),
+        1_000_000,
+        30,
+        1_000_000,
+    )
+    .await
+    .expect("connect app")
+}
+
+/// A `Db` with a tiny per-project document quota, for the quota test.
+async fn connect_with_quota(max_docs_per_project: i64) -> Db {
+    Db::connect(
+        &app_url(),
+        2,
+        "test-pepper".into(),
+        1_000_000,
+        30,
+        max_docs_per_project,
+    )
+    .await
+    .expect("connect app (quota)")
 }
 
 #[tokio::test]
@@ -57,8 +79,14 @@ async fn full_db_layer() {
         .await
         .expect("bootstrap B");
 
-    let ctx_a = db.authenticate_api_key(&key_a.secret).await.expect("auth A");
-    let ctx_b = db.authenticate_api_key(&key_b.secret).await.expect("auth B");
+    let ctx_a = db
+        .authenticate_api_key(&key_a.secret)
+        .await
+        .expect("auth A");
+    let ctx_b = db
+        .authenticate_api_key(&key_b.secret)
+        .await
+        .expect("auth B");
     assert_eq!(ctx_a.org_id, org_a.id);
     assert_eq!(ctx_a.actor_type, ActorType::Agent);
     assert_eq!(ctx_a.org_role, OrgRole::Admin);
@@ -67,9 +95,18 @@ async fn full_db_layer() {
     assert!(db.authenticate_api_key("mk_deadbeef").await.is_err());
 
     // --- create project + document in org A ----------------------------------
-    let proj = db.create_project(&ctx_a, "docs", "Docs").await.expect("project");
+    let proj = db
+        .create_project(&ctx_a, "docs", "Docs")
+        .await
+        .expect("project");
     let doc = db
-        .create_document(&ctx_a, proj.id, "guides/setup", "Setup", "# Setup\nHello world\n")
+        .create_document(
+            &ctx_a,
+            proj.id,
+            "guides/setup",
+            "Setup",
+            "# Setup\nHello world\n",
+        )
         .await
         .expect("create doc");
     assert_eq!(doc.current_version, 1);
@@ -80,12 +117,20 @@ async fn full_db_layer() {
         db.get_document(&ctx_b, doc.id).await,
         Err(mdm_core::Error::NotFound)
     ));
-    assert!(db.search(&ctx_b, None, "Hello", 10).await.unwrap().is_empty());
+    assert!(
+        db.search(&ctx_b, None, "Hello", 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     // org A does see it
     assert!(db.get_document(&ctx_a, doc.id).await.is_ok());
 
     // --- full-text search (org A) --------------------------------------------
-    let hits = db.search(&ctx_a, None, "hello world", 10).await.expect("search");
+    let hits = db
+        .search(&ctx_a, None, "hello world", 10)
+        .await
+        .expect("search");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].document_id, doc.id);
 
@@ -106,7 +151,11 @@ async fn full_db_layer() {
         .await
         .expect("update call ok");
     match conflict {
-        UpdateOutcome::Conflict { current_version, current_content, base_content } => {
+        UpdateOutcome::Conflict {
+            current_version,
+            current_content,
+            base_content,
+        } => {
             assert_eq!(current_version, 2);
             assert!(current_content.contains("v2"));
             assert!(base_content.contains("Hello world"));
@@ -115,13 +164,19 @@ async fn full_db_layer() {
     }
 
     // --- atomic append --------------------------------------------------------
-    let appended = db.append_to_document(&ctx_a, doc.id, "appended line\n").await.expect("append");
+    let appended = db
+        .append_to_document(&ctx_a, doc.id, "appended line\n")
+        .await
+        .expect("append");
     assert_eq!(appended.current_version, 3);
     assert!(appended.content.contains("v2"));
     assert!(appended.content.contains("appended line"));
 
     // --- restore --------------------------------------------------------------
-    let restored = db.restore_version(&ctx_a, doc.id, 1).await.expect("restore");
+    let restored = db
+        .restore_version(&ctx_a, doc.id, 1)
+        .await
+        .expect("restore");
     assert_eq!(restored.current_version, 4);
     assert!(restored.content.contains("Hello world"));
 
@@ -132,9 +187,19 @@ async fn full_db_layer() {
 
     // --- soft delete + undelete ----------------------------------------------
     db.delete_document(&ctx_a, doc.id).await.expect("delete");
-    assert!(matches!(db.get_document(&ctx_a, doc.id).await, Err(mdm_core::Error::NotFound)));
-    assert!(db.search(&ctx_a, None, "hello", 10).await.unwrap().is_empty());
-    db.undelete_document(&ctx_a, doc.id).await.expect("undelete");
+    assert!(matches!(
+        db.get_document(&ctx_a, doc.id).await,
+        Err(mdm_core::Error::NotFound)
+    ));
+    assert!(
+        db.search(&ctx_a, None, "hello", 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    db.undelete_document(&ctx_a, doc.id)
+        .await
+        .expect("undelete");
     assert!(db.get_document(&ctx_a, doc.id).await.is_ok());
 
     // --- RBAC: a viewer key cannot write -------------------------------------
@@ -142,33 +207,51 @@ async fn full_db_layer() {
         .create_api_key(&ctx_a, "viewer-bot", OrgRole::Viewer)
         .await
         .expect("mint viewer key");
-    let ctx_viewer = db.authenticate_api_key(&viewer_key.secret).await.expect("auth viewer");
+    let ctx_viewer = db
+        .authenticate_api_key(&viewer_key.secret)
+        .await
+        .expect("auth viewer");
     assert_eq!(ctx_viewer.org_role, OrgRole::Viewer);
     assert!(db.get_document(&ctx_viewer, doc.id).await.is_ok()); // can read
     assert!(matches!(
-        db.create_document(&ctx_viewer, proj.id, "x", "X", "x").await,
+        db.create_document(&ctx_viewer, proj.id, "x", "X", "x")
+            .await,
         Err(mdm_core::Error::Forbidden)
     ));
 
     // --- revoke kills the key -------------------------------------------------
-    db.revoke_api_key(&ctx_a, viewer_key.info.id).await.expect("revoke");
+    db.revoke_api_key(&ctx_a, viewer_key.info.id)
+        .await
+        .expect("revoke");
     assert!(db.authenticate_api_key(&viewer_key.secret).await.is_err());
 
     // --- categories (hierarchical, cross-project) ----------------------------
-    let root = db.create_category(&ctx_a, None, "engineering", "Engineering").await.expect("root cat");
+    let root = db
+        .create_category(&ctx_a, None, "engineering", "Engineering")
+        .await
+        .expect("root cat");
     let child = db
         .create_category(&ctx_a, Some(root.id), "backend", "Backend")
         .await
         .expect("child cat");
     assert_eq!(child.parent_id, Some(root.id));
     // duplicate root slug rejected
-    assert!(db.create_category(&ctx_a, None, "engineering", "Dup").await.is_err());
+    assert!(
+        db.create_category(&ctx_a, None, "engineering", "Dup")
+            .await
+            .is_err()
+    );
 
-    db.categorize_document(&ctx_a, doc.id, child.id).await.expect("categorize");
+    db.categorize_document(&ctx_a, doc.id, child.id)
+        .await
+        .expect("categorize");
     let doc_cats = db.list_document_categories(&ctx_a, doc.id).await.unwrap();
     assert_eq!(doc_cats.len(), 1);
     assert_eq!(doc_cats[0].id, child.id);
-    let in_cat = db.list_documents_in_category(&ctx_a, child.id).await.unwrap();
+    let in_cat = db
+        .list_documents_in_category(&ctx_a, child.id)
+        .await
+        .unwrap();
     assert_eq!(in_cat.len(), 1);
     assert_eq!(in_cat[0].id, doc.id);
 
@@ -182,38 +265,124 @@ async fn full_db_layer() {
     // --- RBAC lattice: per-doc deny + team grants + owner override -----------
     // A 'member' key shares the admin's user id but is clamped to member role, so it
     // exercises the deny path (which org owner/admin override).
-    let member_key = db.create_api_key(&ctx_a, "member-bot", OrgRole::Member).await.expect("member key");
-    let ctx_member = db.authenticate_api_key(&member_key.secret).await.expect("auth member");
+    let member_key = db
+        .create_api_key(&ctx_a, "member-bot", OrgRole::Member)
+        .await
+        .expect("member key");
+    let ctx_member = db
+        .authenticate_api_key(&member_key.secret)
+        .await
+        .expect("auth member");
     assert_eq!(ctx_member.org_role, OrgRole::Member);
 
     // baseline: a member can read + write
     assert!(db.get_document(&ctx_member, doc.id).await.is_ok());
-    assert!(db.append_to_document(&ctx_member, doc.id, "by member\n").await.is_ok());
+    assert!(
+        db.append_to_document(&ctx_member, doc.id, "by member\n")
+            .await
+            .is_ok()
+    );
 
     // explicit per-doc deny locks the member out (read + write)
-    db.grant_document(&ctx_a, doc.id, "user", ctx_member.user_id, Role::None).await.expect("deny");
-    assert!(matches!(db.get_document(&ctx_member, doc.id).await, Err(mdm_core::Error::Forbidden)));
+    db.grant_document(&ctx_a, doc.id, "user", ctx_member.user_id, Role::None)
+        .await
+        .expect("deny");
     assert!(matches!(
-        db.update_document(&ctx_member, doc.id, "x", 99, VersionKind::Checkpoint).await,
+        db.get_document(&ctx_member, doc.id).await,
+        Err(mdm_core::Error::Forbidden)
+    ));
+    assert!(matches!(
+        db.update_document(&ctx_member, doc.id, "x", 99, VersionKind::Checkpoint)
+            .await,
         Err(mdm_core::Error::Forbidden)
     ));
     // owner/admin override the deny
     assert!(db.get_document(&ctx_a, doc.id).await.is_ok());
 
     // a positive user grant does NOT beat an explicit deny on the same doc...
-    db.grant_document(&ctx_a, doc.id, "user", ctx_member.user_id, Role::Editor).await.expect("regrant editor");
+    db.grant_document(&ctx_a, doc.id, "user", ctx_member.user_id, Role::Editor)
+        .await
+        .expect("regrant editor");
     assert!(db.get_document(&ctx_member, doc.id).await.is_ok()); // deny replaced by editor → allowed again
 
     // ...but a team-level deny vetoes even a positive user grant.
-    let team = db.create_team(&ctx_a, "secret", "Secret").await.expect("team");
-    db.add_team_member(&ctx_a, team.id, ctx_member.user_id).await.expect("add team member");
-    db.grant_document(&ctx_a, doc.id, "team", team.id, Role::None).await.expect("team deny");
+    let team = db
+        .create_team(&ctx_a, "secret", "Secret")
+        .await
+        .expect("team");
+    db.add_team_member(&ctx_a, team.id, ctx_member.user_id)
+        .await
+        .expect("add team member");
+    db.grant_document(&ctx_a, doc.id, "team", team.id, Role::None)
+        .await
+        .expect("team deny");
     assert!(
-        matches!(db.get_document(&ctx_member, doc.id).await, Err(mdm_core::Error::Forbidden)),
+        matches!(
+            db.get_document(&ctx_member, doc.id).await,
+            Err(mdm_core::Error::Forbidden)
+        ),
         "team deny must veto the positive user grant"
     );
-    assert!(db.get_document(&ctx_a, doc.id).await.is_ok(), "admin still overrides team deny");
+    assert!(
+        db.get_document(&ctx_a, doc.id).await.is_ok(),
+        "admin still overrides team deny"
+    );
+
+    // a denied document is also hidden from the member's listings + search
+    let member_docs = db.list_documents(&ctx_member, proj.id, 100).await.unwrap();
+    assert!(
+        !member_docs.iter().any(|d| d.id == doc.id),
+        "denied doc hidden from member list"
+    );
+    let admin_docs = db.list_documents(&ctx_a, proj.id, 100).await.unwrap();
+    assert!(
+        admin_docs.iter().any(|d| d.id == doc.id),
+        "admin still lists the doc"
+    );
+    assert!(
+        db.search(&ctx_member, None, "hello", 10)
+            .await
+            .unwrap()
+            .is_empty(),
+        "denied doc hidden from member search"
+    );
+    assert!(
+        db.search(&ctx_a, None, "hello", 10)
+            .await
+            .unwrap()
+            .iter()
+            .any(|h| h.document_id == doc.id),
+        "admin search still finds the doc"
+    );
 
     // cross-org: org B cannot create teams visible to A, nor grant on A's docs
     assert!(db.list_teams(&ctx_b).await.unwrap().is_empty());
+
+    // --- per-project document quota (abuse guard) ----------------------------
+    let qdb = connect_with_quota(2).await;
+    let (_q_org, _q_user, q_key) = qdb
+        .bootstrap("q@example.com", "Q", "quota", "Quota", "q")
+        .await
+        .expect("bootstrap quota org");
+    let q_ctx = qdb
+        .authenticate_api_key(&q_key.secret)
+        .await
+        .expect("auth quota");
+    let q_proj = qdb
+        .create_project(&q_ctx, "p", "P")
+        .await
+        .expect("quota project");
+    qdb.create_document(&q_ctx, q_proj.id, "a", "A", "x")
+        .await
+        .expect("doc 1");
+    qdb.create_document(&q_ctx, q_proj.id, "b", "B", "x")
+        .await
+        .expect("doc 2");
+    assert!(
+        matches!(
+            qdb.create_document(&q_ctx, q_proj.id, "c", "C", "x").await,
+            Err(mdm_core::Error::TooManyRequests(_))
+        ),
+        "3rd doc must exceed the per-project quota of 2"
+    );
 }

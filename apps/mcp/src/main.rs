@@ -57,9 +57,7 @@ async fn handle(client: &Client, msg: &Value) -> Option<Value> {
     let id = msg.get("id").cloned();
 
     // Notifications have no id and expect no response.
-    if id.is_none() {
-        return None;
-    }
+    id.as_ref()?;
     let id = id.unwrap();
 
     match method {
@@ -124,14 +122,21 @@ fn pretty(v: &Value) -> String {
 
 async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, String> {
     match name {
-        "list_projects" => client.list_projects().await.map(|v| pretty(&v)).map_err(fmt_err),
+        "list_projects" => client
+            .list_projects()
+            .await
+            .map(|v| pretty(&v))
+            .map_err(fmt_err),
         "create_project" => client
             .create_project(arg_str(args, "slug")?, arg_str(args, "name")?)
             .await
             .map(|v| pretty(&v))
             .map_err(fmt_err),
         "list_documents" => client
-            .list_documents(arg_str(args, "project_id")?, args.get("limit").and_then(Value::as_i64))
+            .list_documents(
+                arg_str(args, "project_id")?,
+                args.get("limit").and_then(Value::as_i64),
+            )
             .await
             .map(|v| pretty(&v))
             .map_err(fmt_err),
@@ -143,7 +148,12 @@ async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, 
                 args.get("content").and_then(Value::as_str).unwrap_or(""),
             )
             .await
-            .map(|v| format!("Created document {} (version {})", v["id"], v["current_version"]))
+            .map(|v| {
+                format!(
+                    "Created document {} (version {})",
+                    v["id"], v["current_version"]
+                )
+            })
             .map_err(fmt_err),
         // Reading returns the RAW markdown body — the key agent affordance.
         "get_doc" => client
@@ -157,25 +167,37 @@ async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, 
             .map(|v| v["content"].as_str().unwrap_or_default().to_string())
             .map_err(fmt_err),
         "update_doc" => {
-            let kind = args.get("kind").and_then(Value::as_str).unwrap_or("checkpoint");
+            let kind = args
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("checkpoint");
             let expected = args
                 .get("expected_version")
                 .and_then(Value::as_i64)
                 .ok_or("missing required integer argument: expected_version")?;
             match client
-                .update_document(arg_str(args, "document_id")?, arg_str(args, "content")?, expected, kind)
+                .update_document(
+                    arg_str(args, "document_id")?,
+                    arg_str(args, "content")?,
+                    expected,
+                    kind,
+                )
                 .await
                 .map_err(fmt_err)?
             {
-                UpdateResult::Updated(v) => Ok(format!("Updated to version {}", v["current_version"])),
-                UpdateResult::Conflict { current_version, current_content, base_content } => {
-                    Err(format!(
-                        "CONFLICT: the document is now at version {current_version}; your \
+                UpdateResult::Updated(v) => {
+                    Ok(format!("Updated to version {}", v["current_version"]))
+                }
+                UpdateResult::Conflict {
+                    current_version,
+                    current_content,
+                    base_content,
+                } => Err(format!(
+                    "CONFLICT: the document is now at version {current_version}; your \
                          expected_version was stale, so nothing was written. Re-fetch and merge.\n\n\
                          --- CURRENT (version {current_version}) ---\n{current_content}\n\
                          --- BASE (your expected_version) ---\n{base_content}"
-                    ))
-                }
+                )),
             }
         }
         "append_to_doc" => client
@@ -218,13 +240,21 @@ async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, 
             .await
             .map(|v| format_search(&v))
             .map_err(fmt_err),
-        "list_tags" => client.list_tags().await.map(|v| pretty(&v)).map_err(fmt_err),
+        "list_tags" => client
+            .list_tags()
+            .await
+            .map(|v| pretty(&v))
+            .map_err(fmt_err),
         "add_tag" => client
             .add_document_tag(arg_str(args, "document_id")?, arg_str(args, "name")?)
             .await
             .map(|v| format!("Tagged with {}", v["name"]))
             .map_err(fmt_err),
-        "list_categories" => client.list_categories().await.map(|v| pretty(&v)).map_err(fmt_err),
+        "list_categories" => client
+            .list_categories()
+            .await
+            .map(|v| pretty(&v))
+            .map_err(fmt_err),
         "create_category" => client
             .create_category(
                 args.get("parent_id").and_then(Value::as_str),

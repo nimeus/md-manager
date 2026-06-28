@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      # Integration tests (mdm-db) read these; default dev creds, CI Postgres.
+      MDM_TEST_OWNER_URL: postgres://md_owner:md_owner_dev@localhost:5432/md_manager_test
+      MDM_TEST_APP_URL: postgres://md_app:md_app_dev@localhost:5432/md_manager_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Provision Postgres roles + test database
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE md_owner LOGIN PASSWORD 'md_owner_dev' NOSUPERUSER NOBYPASSRLS CREATEDB;
+          CREATE ROLE md_app   LOGIN PASSWORD 'md_app_dev'   NOSUPERUSER NOBYPASSRLS;
+          SQL
+          createdb -O md_owner md_manager_test
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace

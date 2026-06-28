@@ -102,7 +102,9 @@ impl OAuthValidator {
         let org = claims
             .get(&self.org_claim)
             .and_then(Value::as_str)
-            .ok_or_else(|| OAuthError::Invalid(format!("token missing org claim '{}'", self.org_claim)))?
+            .ok_or_else(|| {
+                OAuthError::Invalid(format!("token missing org claim '{}'", self.org_claim))
+            })?
             .to_string();
         Ok(OAuthClaims { sub, org })
     }
@@ -152,7 +154,12 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_token_and_extracts_claims() {
-        let v = OAuthValidator::from_jwks("https://auth.example.com", "https://mcp.example.com", "org", test_jwks());
+        let v = OAuthValidator::from_jwks(
+            "https://auth.example.com",
+            "https://mcp.example.com",
+            "org",
+            test_jwks(),
+        );
         let token = mint(json!({
             "sub": "logto|user123",
             "org": "019f0000-0000-7000-8000-000000000001",
@@ -167,7 +174,12 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_wrong_audience() {
-        let v = OAuthValidator::from_jwks("https://auth.example.com", "https://mcp.example.com", "org", test_jwks());
+        let v = OAuthValidator::from_jwks(
+            "https://auth.example.com",
+            "https://mcp.example.com",
+            "org",
+            test_jwks(),
+        );
         let token = mint(json!({
             "sub": "u", "org": "o",
             "aud": "https://WRONG.example.com",
@@ -179,13 +191,21 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_expired_token() {
-        let v = OAuthValidator::from_jwks("https://auth.example.com", "https://mcp.example.com", "org", test_jwks());
+        let v = OAuthValidator::from_jwks(
+            "https://auth.example.com",
+            "https://mcp.example.com",
+            "org",
+            test_jwks(),
+        );
         let token = mint(json!({
             "sub": "u", "org": "o",
             "aud": "https://mcp.example.com",
             "iss": "https://auth.example.com",
             "exp": 1_000_000_000  // year 2001
         }));
-        assert!(v.validate(&token).await.is_err(), "must reject expired token");
+        assert!(
+            v.validate(&token).await.is_err(),
+            "must reject expired token"
+        );
     }
 }

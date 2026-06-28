@@ -14,7 +14,11 @@ use serde_json::Value;
 const DEFAULT_API_URL: &str = "http://127.0.0.1:8787";
 
 #[derive(Parser)]
-#[command(name = "mdm", version, about = "md-manager — manage markdown docs for AI agents")]
+#[command(
+    name = "mdm",
+    version,
+    about = "md-manager — manage markdown docs for AI agents"
+)]
 struct Cli {
     /// API base URL (env: MDM_API_URL; or `mdm auth login`)
     #[arg(long, global = true)]
@@ -266,7 +270,10 @@ enum TeamCmd {
         name: String,
     },
     /// Add an org member to a team
-    AddMember { team_id: String, user_id: String },
+    AddMember {
+        team_id: String,
+        user_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -302,7 +309,9 @@ enum KeysCmd {
         #[arg(long, default_value = "member")]
         role: String,
     },
-    Revoke { id: String },
+    Revoke {
+        id: String,
+    },
 }
 
 #[tokio::main]
@@ -336,7 +345,10 @@ fn client(cli: &Cli) -> Result<Client> {
 }
 
 fn print_json(v: &Value) {
-    println!("{}", serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string()));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string())
+    );
 }
 
 async fn resolve_project(c: &Client, p: &str) -> Result<String> {
@@ -358,12 +370,24 @@ async fn run(cli: Cli) -> Result<()> {
                 .token
                 .clone()
                 .or_else(|| std::env::var("MDM_BOOTSTRAP_TOKEN").ok())
-                .ok_or_else(|| anyhow!("bootstrap token required (--token or MDM_BOOTSTRAP_TOKEN)"))?;
+                .ok_or_else(|| {
+                    anyhow!("bootstrap token required (--token or MDM_BOOTSTRAP_TOKEN)")
+                })?;
             let c = Client::new(url.clone(), String::new());
             let v = c
-                .bootstrap(&token, &a.email, &a.name, &a.org_slug, &a.org_name, &a.key_name)
+                .bootstrap(
+                    &token,
+                    &a.email,
+                    &a.name,
+                    &a.org_slug,
+                    &a.org_name,
+                    &a.key_name,
+                )
                 .await?;
-            let secret = v["api_key"]["secret"].as_str().unwrap_or_default().to_string();
+            let secret = v["api_key"]["secret"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
             if a.save {
                 config::save(&config::StoredConfig {
                     api_url: Some(url),
@@ -440,16 +464,28 @@ async fn run(cli: Cli) -> Result<()> {
                         print!("{}", v["content"].as_str().unwrap_or_default());
                     }
                 }
-                DocCmd::Create { project, path, title, body } => {
+                DocCmd::Create {
+                    project,
+                    path,
+                    title,
+                    body,
+                } => {
                     let pid = resolve_project(&c, project).await?;
                     let content = body.read()?;
                     print_json(&c.create_document(&pid, path, title, &content).await?);
                 }
-                DocCmd::Edit { id, expected_version, kind, body } => {
+                DocCmd::Edit {
+                    id,
+                    expected_version,
+                    kind,
+                    body,
+                } => {
                     let content = body.read()?;
                     let expected = match expected_version {
                         Some(v) => *v,
-                        None => c.get_document(id).await?["current_version"].as_i64().unwrap_or(0),
+                        None => c.get_document(id).await?["current_version"]
+                            .as_i64()
+                            .unwrap_or(0),
                     };
                     match c.update_document(id, &content, expected, kind).await? {
                         UpdateResult::Updated(v) => {
@@ -459,7 +495,9 @@ async fn run(cli: Cli) -> Result<()> {
                                 println!("updated to version {}", v["current_version"]);
                             }
                         }
-                        UpdateResult::Conflict { current_version, .. } => {
+                        UpdateResult::Conflict {
+                            current_version, ..
+                        } => {
                             bail!(
                                 "conflict: document is now at version {current_version} (your base was stale). \
                                  Re-fetch with `mdm doc get {id}` and retry."
@@ -481,7 +519,9 @@ async fn run(cli: Cli) -> Result<()> {
                     c.delete_document(id).await?;
                     println!("deleted {id}");
                 }
-                DocCmd::Restore { id, version } => print_json(&c.restore_version(id, *version).await?),
+                DocCmd::Restore { id, version } => {
+                    print_json(&c.restore_version(id, *version).await?)
+                }
                 DocCmd::History { id } => print_json(&c.history(id).await?),
             }
         }
@@ -504,7 +544,9 @@ async fn run(cli: Cli) -> Result<()> {
             let c = client(&cli)?;
             match cmd {
                 TagCmd::List => print_json(&c.list_tags().await?),
-                TagCmd::Add { doc_id, name } => print_json(&c.add_document_tag(doc_id, name).await?),
+                TagCmd::Add { doc_id, name } => {
+                    print_json(&c.add_document_tag(doc_id, name).await?)
+                }
             }
         }
 
@@ -515,7 +557,10 @@ async fn run(cli: Cli) -> Result<()> {
                 CatCmd::Create { slug, name, parent } => {
                     print_json(&c.create_category(parent.as_deref(), slug, name).await?)
                 }
-                CatCmd::Add { doc_id, category_id } => {
+                CatCmd::Add {
+                    doc_id,
+                    category_id,
+                } => {
                     c.categorize_document(doc_id, category_id).await?;
                     println!("filed {doc_id} under {category_id}");
                 }
@@ -540,11 +585,21 @@ async fn run(cli: Cli) -> Result<()> {
         Cmd::Grant { cmd } => {
             let c = client(&cli)?;
             match cmd {
-                GrantCmd::Project { project_id, subject, id, role } => {
+                GrantCmd::Project {
+                    project_id,
+                    subject,
+                    id,
+                    role,
+                } => {
                     c.grant_project(project_id, subject, id, role).await?;
                     println!("granted {subject}:{id} {role} on project {project_id}");
                 }
-                GrantCmd::Doc { doc_id, subject, id, role } => {
+                GrantCmd::Doc {
+                    doc_id,
+                    subject,
+                    id,
+                    role,
+                } => {
                     c.grant_document(doc_id, subject, id, role).await?;
                     println!("granted {subject}:{id} {role} on document {doc_id}");
                 }
@@ -583,6 +638,9 @@ fn print_search(v: &Value) {
             h["rank"].as_f64().unwrap_or(0.0)
         );
         println!("    id: {}", h["document_id"].as_str().unwrap_or(""));
-        println!("    {}", h["snippet"].as_str().unwrap_or("").replace('\n', " "));
+        println!(
+            "    {}",
+            h["snippet"].as_str().unwrap_or("").replace('\n', " ")
+        );
     }
 }

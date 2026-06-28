@@ -31,7 +31,9 @@ impl Db {
                 .await
                 .map_err(map_db)?;
             if found.is_none() {
-                return Err(Error::invalid("parent category not found in this organization"));
+                return Err(Error::invalid(
+                    "parent category not found in this organization",
+                ));
             }
         }
 
@@ -48,9 +50,15 @@ impl Db {
         .fetch_one(&mut *tx)
         .await
         .map_err(map_db)?;
-        audit(&mut tx, ctx, "category.create", Some(&id.to_string()), json!({ "slug": slug }))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "category.create",
+            Some(&id.to_string()),
+            json!({ "slug": slug }),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(row.into())
     }
@@ -107,10 +115,15 @@ impl Db {
         .execute(&mut *tx)
         .await
         .map_err(map_db)?;
-        audit(&mut tx, ctx, "doc.categorize", Some(&doc_id.to_string()),
-              json!({ "category_id": category_id }))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.categorize",
+            Some(&doc_id.to_string()),
+            json!({ "category_id": category_id }),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(())
     }

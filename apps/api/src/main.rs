@@ -49,10 +49,19 @@ fn router(state: AppState) -> Router {
         )
         .route("/v1/documents/{id}/append", post(handlers::append_document))
         .route("/v1/documents/{id}/move", post(handlers::move_document))
-        .route("/v1/documents/{id}/undelete", post(handlers::undelete_document))
+        .route(
+            "/v1/documents/{id}/undelete",
+            post(handlers::undelete_document),
+        )
         .route("/v1/documents/{id}/history", get(handlers::history))
-        .route("/v1/documents/{id}/versions/{version}", get(handlers::get_version))
-        .route("/v1/documents/{id}/restore", post(handlers::restore_version))
+        .route(
+            "/v1/documents/{id}/versions/{version}",
+            get(handlers::get_version),
+        )
+        .route(
+            "/v1/documents/{id}/restore",
+            post(handlers::restore_version),
+        )
         .route(
             "/v1/documents/{id}/tags",
             get(handlers::list_document_tags).post(handlers::add_document_tag),
@@ -66,8 +75,14 @@ fn router(state: AppState) -> Router {
             "/v1/categories",
             get(handlers::list_categories).post(handlers::create_category),
         )
-        .route("/v1/categories/{id}/documents", get(handlers::list_category_documents))
-        .route("/v1/teams", get(handlers::list_teams).post(handlers::create_team))
+        .route(
+            "/v1/categories/{id}/documents",
+            get(handlers::list_category_documents),
+        )
+        .route(
+            "/v1/teams",
+            get(handlers::list_teams).post(handlers::create_team),
+        )
         .route("/v1/teams/{id}/members", post(handlers::add_team_member))
         .route("/v1/projects/{id}/grants", post(handlers::grant_project))
         .route("/v1/documents/{id}/grants", post(handlers::grant_document))
@@ -94,9 +109,15 @@ async fn main() -> anyhow::Result<()> {
         cfg.api_key_pepper.expose().to_string(),
         cfg.max_doc_bytes,
         cfg.autosave_debounce_secs,
+        cfg.max_docs_per_project,
     )
     .await?;
     db.assert_app_role_not_bypassrls().await?;
+
+    let per_minute = std::num::NonZeroU32::new(cfg.rate_limit_per_minute.max(1)).unwrap();
+    let rate_limiter: Arc<state::RateLimiter> = Arc::new(governor::RateLimiter::keyed(
+        governor::Quota::per_minute(per_minute),
+    ));
 
     let oauth = cfg
         .oauth()
@@ -110,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
         oauth,
         resource_url: Arc::new(cfg.public_base_url()),
         issuer: cfg.oauth().map(|s| Arc::new(s.issuer)),
+        rate_limiter,
     };
 
     let listener = tokio::net::TcpListener::bind(cfg.api_addr).await?;

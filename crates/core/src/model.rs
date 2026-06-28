@@ -57,7 +57,11 @@ impl OrgRole {
 
     /// The less-privileged of two roles (used to clamp an API key to its creator's role).
     pub fn min(self, other: OrgRole) -> OrgRole {
-        if self.rank() <= other.rank() { self } else { other }
+        if self.rank() <= other.rank() {
+            self
+        } else {
+            other
+        }
     }
 }
 

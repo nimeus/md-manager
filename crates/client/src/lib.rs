@@ -178,7 +178,10 @@ impl Client {
         } else if status.as_u16() == 409 {
             Ok(UpdateResult::Conflict {
                 current_version: v["current_version"].as_i64().unwrap_or(0),
-                current_content: v["current_content"].as_str().unwrap_or_default().to_string(),
+                current_content: v["current_content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
                 base_content: v["base_content"].as_str().unwrap_or_default().to_string(),
             })
         } else {
@@ -210,13 +213,19 @@ impl Client {
     }
 
     pub async fn undelete_document(&self, id: &str) -> R<Value> {
-        self.run(self.http.post(self.url(&format!("/v1/documents/{id}/undelete"))))
-            .await
+        self.run(
+            self.http
+                .post(self.url(&format!("/v1/documents/{id}/undelete"))),
+        )
+        .await
     }
 
     pub async fn history(&self, id: &str) -> R<Value> {
-        self.run(self.http.get(self.url(&format!("/v1/documents/{id}/history"))))
-            .await
+        self.run(
+            self.http
+                .get(self.url(&format!("/v1/documents/{id}/history"))),
+        )
+        .await
     }
 
     pub async fn restore_version(&self, id: &str, version: i64) -> R<Value> {
@@ -249,12 +258,18 @@ impl Client {
         self.run(self.http.get(self.url("/v1/categories"))).await
     }
 
-    pub async fn create_category(&self, parent_id: Option<&str>, slug: &str, name: &str) -> R<Value> {
+    pub async fn create_category(
+        &self,
+        parent_id: Option<&str>,
+        slug: &str,
+        name: &str,
+    ) -> R<Value> {
         let mut body = json!({ "slug": slug, "name": name });
         if let Some(p) = parent_id {
             body["parent_id"] = json!(p);
         }
-        self.run(self.http.post(self.url("/v1/categories")).json(&body)).await
+        self.run(self.http.post(self.url("/v1/categories")).json(&body))
+            .await
     }
 
     pub async fn categorize_document(&self, doc_id: &str, category_id: &str) -> R<Value> {
@@ -267,13 +282,19 @@ impl Client {
     }
 
     pub async fn list_document_categories(&self, doc_id: &str) -> R<Value> {
-        self.run(self.http.get(self.url(&format!("/v1/documents/{doc_id}/categories"))))
-            .await
+        self.run(
+            self.http
+                .get(self.url(&format!("/v1/documents/{doc_id}/categories"))),
+        )
+        .await
     }
 
     pub async fn list_category_documents(&self, category_id: &str) -> R<Value> {
-        self.run(self.http.get(self.url(&format!("/v1/categories/{category_id}/documents"))))
-            .await
+        self.run(
+            self.http
+                .get(self.url(&format!("/v1/categories/{category_id}/documents"))),
+        )
+        .await
     }
 
     // --- teams + grants --------------------------------------------------
@@ -283,8 +304,12 @@ impl Client {
     }
 
     pub async fn create_team(&self, slug: &str, name: &str) -> R<Value> {
-        self.run(self.http.post(self.url("/v1/teams")).json(&json!({ "slug": slug, "name": name })))
-            .await
+        self.run(
+            self.http
+                .post(self.url("/v1/teams"))
+                .json(&json!({ "slug": slug, "name": name })),
+        )
+        .await
     }
 
     pub async fn add_team_member(&self, team_id: &str, user_id: &str) -> R<Value> {
@@ -296,7 +321,13 @@ impl Client {
         .await
     }
 
-    pub async fn grant_project(&self, project_id: &str, subject_type: &str, subject_id: &str, role: &str) -> R<Value> {
+    pub async fn grant_project(
+        &self,
+        project_id: &str,
+        subject_type: &str,
+        subject_id: &str,
+        role: &str,
+    ) -> R<Value> {
         self.run(
             self.http
                 .post(self.url(&format!("/v1/projects/{project_id}/grants")))
@@ -305,7 +336,13 @@ impl Client {
         .await
     }
 
-    pub async fn grant_document(&self, doc_id: &str, subject_type: &str, subject_id: &str, role: &str) -> R<Value> {
+    pub async fn grant_document(
+        &self,
+        doc_id: &str,
+        subject_type: &str,
+        subject_id: &str,
+        role: &str,
+    ) -> R<Value> {
         self.run(
             self.http
                 .post(self.url(&format!("/v1/documents/{doc_id}/grants")))
@@ -314,7 +351,12 @@ impl Client {
         .await
     }
 
-    pub async fn search(&self, query: &str, project_id: Option<&str>, limit: Option<i64>) -> R<Value> {
+    pub async fn search(
+        &self,
+        query: &str,
+        project_id: Option<&str>,
+        limit: Option<i64>,
+    ) -> R<Value> {
         let mut q: Vec<(String, String)> = vec![("q".into(), query.to_string())];
         if let Some(p) = project_id {
             q.push(("project_id".into(), p.to_string()));
@@ -322,7 +364,8 @@ impl Client {
         if let Some(l) = limit {
             q.push(("limit".into(), l.to_string()));
         }
-        self.run(self.http.get(self.url("/v1/search")).query(&q)).await
+        self.run(self.http.get(self.url("/v1/search")).query(&q))
+            .await
     }
 
     // --- api keys --------------------------------------------------------
@@ -390,5 +433,9 @@ fn api_error(status: u16, body: &str) -> ClientError {
             )
         })
         .unwrap_or_else(|| ("error".to_string(), body.to_string()));
-    ClientError::Api { status, code, message }
+    ClientError::Api {
+        status,
+        code,
+        message,
+    }
 }

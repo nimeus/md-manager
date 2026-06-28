@@ -36,14 +36,26 @@ pub async fn bootstrap(
     if presented.is_empty() || presented != s.bootstrap_token.as_str() {
         return Err(ApiError(mdm_core::Error::Unauthorized));
     }
-    let (org, user, key) = s
-        .db
-        .bootstrap(&req.email, &req.display_name, &req.org_slug, &req.org_name, &req.key_name)
+    let (org, user, key) =
+        s.db.bootstrap(
+            &req.email,
+            &req.display_name,
+            &req.org_slug,
+            &req.org_name,
+            &req.key_name,
+        )
         .await?;
-    Ok((StatusCode::CREATED, Json(json!({ "org": org, "user": user, "api_key": key }))).into_response())
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "org": org, "user": user, "api_key": key })),
+    )
+        .into_response())
 }
 
-pub async fn whoami(State(_s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn whoami(
+    State(_s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!({
         "org_id": ctx.org_id,
         "user_id": ctx.user_id,
@@ -52,13 +64,19 @@ pub async fn whoami(State(_s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Js
     })))
 }
 
-pub async fn list_orgs(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn list_orgs(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!(s.db.list_orgs(&ctx).await?)))
 }
 
 // --- projects --------------------------------------------------------------
 
-pub async fn list_projects(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn list_projects(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!(s.db.list_projects(&ctx).await?)))
 }
 
@@ -85,7 +103,9 @@ pub async fn list_documents(
     Path(project_id): Path<Uuid>,
     Query(q): Query<ListDocsQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let docs = s.db.list_documents(&ctx, project_id, clamp_limit(q.limit, 50)).await?;
+    let docs =
+        s.db.list_documents(&ctx, project_id, clamp_limit(q.limit, 50))
+            .await?;
     Ok(Json(json!(docs)))
 }
 
@@ -95,7 +115,9 @@ pub async fn create_document(
     Path(project_id): Path<Uuid>,
     Json(req): Json<CreateDocReq>,
 ) -> ApiResult<Response> {
-    let doc = s.db.create_document(&ctx, project_id, &req.path, &req.title, &req.content).await?;
+    let doc =
+        s.db.create_document(&ctx, project_id, &req.path, &req.title, &req.content)
+            .await?;
     Ok((StatusCode::CREATED, Json(doc)).into_response())
 }
 
@@ -106,7 +128,10 @@ pub async fn get_document_by_path(
     Auth(ctx): Auth,
     Query(q): Query<ByPathQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(json!(s.db.get_document_by_path(&ctx, q.project_id, &q.path).await?)))
+    Ok(Json(json!(
+        s.db.get_document_by_path(&ctx, q.project_id, &q.path)
+            .await?
+    )))
 }
 
 pub async fn get_document(
@@ -124,9 +149,17 @@ pub async fn update_document(
     Json(req): Json<UpdateDocReq>,
 ) -> ApiResult<Response> {
     let kind = req.version_kind();
-    match s.db.update_document(&ctx, id, &req.content, req.expected_version, kind).await? {
+    match s
+        .db
+        .update_document(&ctx, id, &req.content, req.expected_version, kind)
+        .await?
+    {
         mdm_db::UpdateOutcome::Updated(doc) => Ok((StatusCode::OK, Json(doc)).into_response()),
-        mdm_db::UpdateOutcome::Conflict { current_version, current_content, base_content } => Ok((
+        mdm_db::UpdateOutcome::Conflict {
+            current_version,
+            current_content,
+            base_content,
+        } => Ok((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "conflict",
@@ -146,7 +179,9 @@ pub async fn append_document(
     Path(id): Path<Uuid>,
     Json(req): Json<AppendReq>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(json!(s.db.append_to_document(&ctx, id, &req.content).await?)))
+    Ok(Json(json!(
+        s.db.append_to_document(&ctx, id, &req.content).await?
+    )))
 }
 
 pub async fn move_document(
@@ -197,12 +232,17 @@ pub async fn restore_version(
     Path(id): Path<Uuid>,
     Json(req): Json<RestoreReq>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(json!(s.db.restore_version(&ctx, id, req.version).await?)))
+    Ok(Json(json!(
+        s.db.restore_version(&ctx, id, req.version).await?
+    )))
 }
 
 // --- tags ------------------------------------------------------------------
 
-pub async fn list_tags(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn list_tags(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!(s.db.list_tags(&ctx).await?)))
 }
 
@@ -226,7 +266,10 @@ pub async fn add_document_tag(
 
 // --- categories ------------------------------------------------------------
 
-pub async fn list_categories(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn list_categories(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!(s.db.list_categories(&ctx).await?)))
 }
 
@@ -235,7 +278,9 @@ pub async fn create_category(
     Auth(ctx): Auth,
     Json(req): Json<CreateCategoryReq>,
 ) -> ApiResult<Response> {
-    let cat = s.db.create_category(&ctx, req.parent_id, &req.slug, &req.name).await?;
+    let cat =
+        s.db.create_category(&ctx, req.parent_id, &req.slug, &req.name)
+            .await?;
     Ok((StatusCode::CREATED, Json(cat)).into_response())
 }
 
@@ -244,7 +289,9 @@ pub async fn list_category_documents(
     Auth(ctx): Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(json!(s.db.list_documents_in_category(&ctx, id).await?)))
+    Ok(Json(json!(
+        s.db.list_documents_in_category(&ctx, id).await?
+    )))
 }
 
 pub async fn list_document_categories(
@@ -267,7 +314,10 @@ pub async fn categorize_document(
 
 // --- teams + grants --------------------------------------------------------
 
-pub async fn list_teams(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn list_teams(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!(s.db.list_teams(&ctx).await?)))
 }
 
@@ -297,7 +347,8 @@ pub async fn grant_project(
     Json(req): Json<GrantReq>,
 ) -> ApiResult<StatusCode> {
     let role = mdm_core::Role::from_db(&req.role)?;
-    s.db.grant_project(&ctx, project_id, &req.subject_type, req.subject_id, role).await?;
+    s.db.grant_project(&ctx, project_id, &req.subject_type, req.subject_id, role)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -308,7 +359,8 @@ pub async fn grant_document(
     Json(req): Json<GrantReq>,
 ) -> ApiResult<StatusCode> {
     let role = mdm_core::Role::from_db(&req.role)?;
-    s.db.grant_document(&ctx, doc_id, &req.subject_type, req.subject_id, role).await?;
+    s.db.grant_document(&ctx, doc_id, &req.subject_type, req.subject_id, role)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -319,13 +371,18 @@ pub async fn search(
     Auth(ctx): Auth,
     Query(q): Query<SearchQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let hits = s.db.search(&ctx, q.project_id, &q.q, clamp_limit(q.limit, 20)).await?;
+    let hits =
+        s.db.search(&ctx, q.project_id, &q.q, clamp_limit(q.limit, 20))
+            .await?;
     Ok(Json(json!(hits)))
 }
 
 // --- api keys --------------------------------------------------------------
 
-pub async fn list_api_keys(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+pub async fn list_api_keys(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(json!(s.db.list_api_keys(&ctx).await?)))
 }
 

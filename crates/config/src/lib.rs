@@ -48,6 +48,10 @@ pub struct Config {
     pub max_doc_bytes: i64,
     /// Window within which consecutive same-actor autosaves are coalesced into one version.
     pub autosave_debounce_secs: i64,
+    /// Max documents allowed per project (abuse guard against agent create-loops).
+    pub max_docs_per_project: i64,
+    /// Per-user API request rate limit (requests per minute).
+    pub rate_limit_per_minute: u32,
     /// Max DB pool connections.
     pub db_max_connections: u32,
     /// Structured-log output format.
@@ -78,7 +82,11 @@ pub struct OAuthSettings {
 impl Config {
     /// OAuth settings if fully configured.
     pub fn oauth(&self) -> Option<OAuthSettings> {
-        match (&self.oauth_issuer, &self.oauth_jwks_url, &self.oauth_audience) {
+        match (
+            &self.oauth_issuer,
+            &self.oauth_jwks_url,
+            &self.oauth_audience,
+        ) {
             (Some(issuer), Some(jwks_url), Some(audience)) => Some(OAuthSettings {
                 issuer: issuer.clone(),
                 jwks_url: jwks_url.clone(),
@@ -111,6 +119,8 @@ impl Default for Config {
             admin_bootstrap_token: Secret::new("dev-bootstrap-token".into()),
             max_doc_bytes: 1_000_000,
             autosave_debounce_secs: 30,
+            max_docs_per_project: 5_000,
+            rate_limit_per_minute: 120,
             db_max_connections: 10,
             log_format: LogFormat::Pretty,
             oauth_issuer: None,
@@ -126,11 +136,14 @@ impl Config {
     /// Load configuration from defaults + `config.toml` + `MDM_`-prefixed env vars.
     ///
     /// Example: `MDM_DATABASE_URL=...`, `MDM_API_ADDR=0.0.0.0:8080`, `MDM_LOG_FORMAT=json`.
+    // figment::Error is large, but this is a one-shot startup path.
+    #[allow(clippy::result_large_err)]
     pub fn load() -> Result<Self, ConfigError> {
         Self::load_from("config.toml")
     }
 
     /// Like [`Config::load`] but with an explicit TOML path (used in tests).
+    #[allow(clippy::result_large_err)]
     pub fn load_from(toml_path: &str) -> Result<Self, ConfigError> {
         let cfg = Figment::from(Serialized::defaults(Config::default()))
             .merge(Toml::file(toml_path))

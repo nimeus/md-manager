@@ -71,7 +71,11 @@ impl Db {
         for s in role_strs {
             grant_roles.push(Role::from_db(&s)?);
         }
-        Ok(rbac::resolve_doc_role(&DocAccess { org_role: ctx.org_role, grant_roles, denied }))
+        Ok(rbac::resolve_doc_role(&DocAccess {
+            org_role: ctx.org_role,
+            grant_roles,
+            denied,
+        }))
     }
 
     /// Effective role at the project level (for creating documents — there's no doc yet).
@@ -98,7 +102,11 @@ impl Db {
         for s in role_strs {
             grant_roles.push(Role::from_db(&s)?);
         }
-        Ok(rbac::resolve_doc_role(&DocAccess { org_role: ctx.org_role, grant_roles, denied: false }))
+        Ok(rbac::resolve_doc_role(&DocAccess {
+            org_role: ctx.org_role,
+            grant_roles,
+            denied: false,
+        }))
     }
 
     pub(crate) async fn authorize_doc(
@@ -149,9 +157,15 @@ impl Db {
         .fetch_one(&mut *tx)
         .await
         .map_err(map_db)?;
-        audit(&mut tx, ctx, "team.create", Some(&id.to_string()), json!({ "slug": slug }))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "team.create",
+            Some(&id.to_string()),
+            json!({ "slug": slug }),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(row.into())
     }
@@ -207,10 +221,15 @@ impl Db {
         .execute(&mut *tx)
         .await
         .map_err(map_db)?;
-        audit(&mut tx, ctx, "team.add_member", Some(&team_id.to_string()),
-              json!({ "user_id": user_id }))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "team.add_member",
+            Some(&team_id.to_string()),
+            json!({ "user_id": user_id }),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(())
     }
@@ -228,7 +247,9 @@ impl Db {
         rbac::require_admin(ctx)?;
         validate_subject_type(subject_type)?;
         if role == Role::None {
-            return Err(Error::invalid("project grants cannot be a deny (role 'none')"));
+            return Err(Error::invalid(
+                "project grants cannot be a deny (role 'none')",
+            ));
         }
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         sqlx::query(

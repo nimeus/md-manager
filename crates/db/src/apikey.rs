@@ -37,9 +37,15 @@ impl Db {
         .fetch_one(&mut *tx)
         .await
         .map_err(map_db)?;
-        audit(&mut tx, ctx, "apikey.create", Some(&row.id.to_string()), json!({"name": name}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "apikey.create",
+            Some(&row.id.to_string()),
+            json!({"name": name}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
 
         Ok(ApiKeyCreated {
@@ -78,9 +84,15 @@ impl Db {
         if affected == 0 {
             return Err(Error::NotFound);
         }
-        audit(&mut tx, ctx, "apikey.revoke", Some(&key_id.to_string()), json!({}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "apikey.revoke",
+            Some(&key_id.to_string()),
+            json!({}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(())
     }

@@ -110,23 +110,39 @@ mod tests {
     }
 
     fn access(org_role: OrgRole, grant_roles: Vec<Role>, denied: bool) -> DocAccess {
-        DocAccess { org_role, grant_roles, denied }
+        DocAccess {
+            org_role,
+            grant_roles,
+            denied,
+        }
     }
 
     #[test]
     fn member_base_is_editor() {
-        assert_eq!(resolve_doc_role(&access(OrgRole::Member, vec![], false)), Role::Editor);
+        assert_eq!(
+            resolve_doc_role(&access(OrgRole::Member, vec![], false)),
+            Role::Editor
+        );
     }
 
     #[test]
     fn per_doc_deny_locks_out_a_member() {
-        assert_eq!(resolve_doc_role(&access(OrgRole::Member, vec![], true)), Role::None);
+        assert_eq!(
+            resolve_doc_role(&access(OrgRole::Member, vec![], true)),
+            Role::None
+        );
     }
 
     #[test]
     fn owner_and_admin_override_deny() {
-        assert_eq!(resolve_doc_role(&access(OrgRole::Owner, vec![], true)), Role::Admin);
-        assert_eq!(resolve_doc_role(&access(OrgRole::Admin, vec![], true)), Role::Admin);
+        assert_eq!(
+            resolve_doc_role(&access(OrgRole::Owner, vec![], true)),
+            Role::Admin
+        );
+        assert_eq!(
+            resolve_doc_role(&access(OrgRole::Admin, vec![], true)),
+            Role::Admin
+        );
     }
 
     #[test]

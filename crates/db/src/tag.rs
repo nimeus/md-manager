@@ -11,12 +11,11 @@ impl Db {
     pub async fn list_tags(&self, ctx: &AuthContext) -> Result<Vec<Tag>> {
         rbac::require_read(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
-        let rows = sqlx::query_as::<_, crate::rows::TagRow>(
-            "SELECT id, name FROM tags ORDER BY name",
-        )
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(map_db)?;
+        let rows =
+            sqlx::query_as::<_, crate::rows::TagRow>("SELECT id, name FROM tags ORDER BY name")
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
@@ -57,9 +56,15 @@ impl Db {
         .await
         .map_err(map_db)?;
 
-        audit(&mut tx, ctx, "doc.tag", Some(&doc_id.to_string()), json!({"tag": name}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.tag",
+            Some(&doc_id.to_string()),
+            json!({"tag": name}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(tag.into())
     }

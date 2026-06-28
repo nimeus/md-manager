@@ -34,15 +34,15 @@ pub fn validate_path(path: &str) -> Result<()> {
     }
     for seg in path.split('/') {
         if seg.is_empty() || seg == "." || seg == ".." {
-            return Err(Error::invalid("path segments must be non-empty and not '.'/'..'"));
+            return Err(Error::invalid(
+                "path segments must be non-empty and not '.'/'..'",
+            ));
         }
         if !seg
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
         {
-            return Err(Error::invalid(
-                "path segments may contain only [a-z0-9._-]",
-            ));
+            return Err(Error::invalid("path segments may contain only [a-z0-9._-]"));
         }
     }
     Ok(())

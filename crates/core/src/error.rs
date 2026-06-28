@@ -29,6 +29,10 @@ pub enum Error {
     #[error("invalid input: {0}")]
     Invalid(String),
 
+    /// Rate limit or resource quota exceeded. Surfaced as HTTP 429.
+    #[error("too many requests: {0}")]
+    TooManyRequests(String),
+
     /// An unexpected internal failure (DB error, etc.). Surfaced as HTTP 500;
     /// the detail is logged, not returned to the caller.
     #[error("internal error")]

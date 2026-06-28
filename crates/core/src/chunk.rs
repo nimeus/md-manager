@@ -28,19 +28,20 @@ pub fn chunk_markdown_with(content: &str, max_chars: usize) -> Vec<Chunk> {
     let mut in_fence = false;
     let mut next_index: i32 = 0;
 
-    let flush = |buf: &mut String, path: &[(u8, String)], next_index: &mut i32, chunks: &mut Vec<Chunk>| {
-        if buf.trim().is_empty() {
+    let flush =
+        |buf: &mut String, path: &[(u8, String)], next_index: &mut i32, chunks: &mut Vec<Chunk>| {
+            if buf.trim().is_empty() {
+                buf.clear();
+                return;
+            }
+            chunks.push(Chunk {
+                index: *next_index,
+                heading_path: breadcrumb(path),
+                content: buf.trim_end().to_string(),
+            });
+            *next_index += 1;
             buf.clear();
-            return;
-        }
-        chunks.push(Chunk {
-            index: *next_index,
-            heading_path: breadcrumb(path),
-            content: buf.trim_end().to_string(),
-        });
-        *next_index += 1;
-        buf.clear();
-    };
+        };
 
     for line in content.lines() {
         let trimmed = line.trim_start();
@@ -52,21 +53,19 @@ pub fn chunk_markdown_with(content: &str, max_chars: usize) -> Vec<Chunk> {
             continue;
         }
 
-        if !in_fence {
-            if let Some((level, _text)) = parse_heading(line) {
-                // Close the previous section before starting this heading's chunk.
-                flush(&mut buf, &path, &mut next_index, &mut chunks);
-                // Pop same-or-deeper headings, then push this one.
-                while path.last().map(|(l, _)| *l >= level).unwrap_or(false) {
-                    path.pop();
-                }
-                if let Some((_, text)) = parse_heading(line) {
-                    path.push((level, text));
-                }
-                buf.push_str(line);
-                buf.push('\n');
-                continue;
+        if !in_fence && let Some((level, _text)) = parse_heading(line) {
+            // Close the previous section before starting this heading's chunk.
+            flush(&mut buf, &path, &mut next_index, &mut chunks);
+            // Pop same-or-deeper headings, then push this one.
+            while path.last().map(|(l, _)| *l >= level).unwrap_or(false) {
+                path.pop();
             }
+            if let Some((_, text)) = parse_heading(line) {
+                path.push((level, text));
+            }
+            buf.push_str(line);
+            buf.push('\n');
+            continue;
         }
 
         buf.push_str(line);

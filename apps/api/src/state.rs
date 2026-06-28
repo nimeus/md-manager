@@ -6,11 +6,16 @@ use axum::{
     extract::FromRequestParts,
     http::{header::AUTHORIZATION, request::Parts},
 };
+use governor::DefaultKeyedRateLimiter;
 use mdm_core::AuthContext;
 use mdm_db::Db;
+use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::oauth::OAuthValidator;
+
+/// Per-user request rate limiter (keyed by the authenticated user id).
+pub type RateLimiter = DefaultKeyedRateLimiter<Uuid>;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +27,8 @@ pub struct AppState {
     pub resource_url: Arc<String>,
     /// Authorization-server issuer URL (Some when OAuth is configured).
     pub issuer: Option<Arc<String>>,
+    /// Per-user request rate limiter.
+    pub rate_limiter: Arc<RateLimiter>,
 }
 
 /// Resolve a bearer token to an [`AuthContext`]:
@@ -29,19 +36,27 @@ pub struct AppState {
 /// - otherwise ⇒ OAuth JWT (web connectors), if OAuth is configured.
 pub async fn authenticate(state: &AppState, token: &str) -> Result<AuthContext, mdm_core::Error> {
     let token = token.trim();
-    if token.starts_with("mk_") {
-        return state.db.authenticate_api_key(token).await;
-    }
-    if let Some(oauth) = &state.oauth {
+    let ctx = if token.starts_with("mk_") {
+        state.db.authenticate_api_key(token).await?
+    } else if let Some(oauth) = &state.oauth {
         let claims = oauth.validate(token).await.map_err(|err| {
             tracing::debug!(?err, "OAuth token validation failed");
             mdm_core::Error::Unauthorized
         })?;
         let org_id = uuid::Uuid::parse_str(&claims.org)
             .map_err(|_| mdm_core::Error::invalid("org claim is not a valid org id"))?;
-        return state.db.authenticate_oauth(&claims.sub, org_id).await;
+        state.db.authenticate_oauth(&claims.sub, org_id).await?
+    } else {
+        return Err(mdm_core::Error::Unauthorized);
+    };
+
+    // Per-user rate limit (applies to both REST and the MCP endpoint).
+    if state.rate_limiter.check_key(&ctx.user_id).is_err() {
+        return Err(mdm_core::Error::TooManyRequests(
+            "rate limit exceeded".into(),
+        ));
     }
-    Err(mdm_core::Error::Unauthorized)
+    Ok(ctx)
 }
 
 /// Extractor yielding the resolved [`AuthContext`]; 401 if missing/invalid.

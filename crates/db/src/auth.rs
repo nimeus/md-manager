@@ -1,6 +1,6 @@
 //! API-key authentication and the dev bootstrap.
 
-use mdm_core::model::{ActorType, ApiKeyCreated, AuthContext, Organization, OrgRole, User};
+use mdm_core::model::{ActorType, ApiKeyCreated, AuthContext, OrgRole, Organization, User};
 use mdm_core::{Error, Result, crypto, ids, validate};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -35,10 +35,10 @@ impl Db {
         if key.revoked_at.is_some() {
             return Err(Error::Unauthorized);
         }
-        if let Some(exp) = key.expires_at {
-            if exp <= now {
-                return Err(Error::Unauthorized);
-            }
+        if let Some(exp) = key.expires_at
+            && exp <= now
+        {
+            return Err(Error::Unauthorized);
         }
         let key_role = key.role()?;
 
@@ -80,12 +80,11 @@ impl Db {
     /// is deferred until Logto's org model is wired — see docs/PLAN.md §5 / Phase 2.)
     pub async fn authenticate_oauth(&self, logto_sub: &str, org_id: Uuid) -> Result<AuthContext> {
         // users is RLS-exempt (global identity): look up by Logto subject directly.
-        let user_id: Option<Uuid> =
-            sqlx::query_scalar("SELECT id FROM users WHERE logto_sub = $1")
-                .bind(logto_sub)
-                .fetch_optional(self.pool())
-                .await
-                .map_err(map_db)?;
+        let user_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE logto_sub = $1")
+            .bind(logto_sub)
+            .fetch_optional(self.pool())
+            .await
+            .map_err(map_db)?;
         let user_id = user_id.ok_or(Error::Unauthorized)?;
 
         let mut tx = self

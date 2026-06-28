@@ -1,6 +1,6 @@
 //! Keyword full-text search over document chunks, aggregated to the document level.
 
-use mdm_core::model::{AuthContext, SearchHit};
+use mdm_core::model::{AuthContext, OrgRole, SearchHit};
 use mdm_core::{Result, rbac};
 use uuid::Uuid;
 
@@ -22,6 +22,7 @@ impl Db {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
+        let privileged = matches!(ctx.org_role, OrgRole::Owner | OrgRole::Admin);
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let rows = sqlx::query_as::<_, crate::rows::SearchRow>(
             "SELECT document_id, project_id, path, title, heading_path, snippet, rank
@@ -41,6 +42,12 @@ impl Db {
                WHERE d.deleted_at IS NULL
                  AND ($2::uuid IS NULL OR d.project_id = $2)
                  AND c.tsv @@ websearch_to_tsquery('english', $1)
+                 AND ($4 OR NOT EXISTS (
+                   SELECT 1 FROM document_grants g
+                   WHERE g.document_id = d.id AND g.role = 'none'
+                     AND ((g.subject_type = 'user' AND g.subject_id = $5)
+                       OR (g.subject_type = 'team' AND g.subject_id IN
+                           (SELECT team_id FROM team_members WHERE user_id = $5)))))
                ORDER BY d.id, ts_rank_cd(c.tsv, websearch_to_tsquery('english', $1)) DESC
              ) hits
              ORDER BY rank DESC
@@ -49,6 +56,8 @@ impl Db {
         .bind(query)
         .bind(project_id)
         .bind(limit)
+        .bind(privileged)
+        .bind(ctx.user_id)
         .fetch_all(&mut *tx)
         .await
         .map_err(map_db)?;

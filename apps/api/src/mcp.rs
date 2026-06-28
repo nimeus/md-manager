@@ -35,7 +35,11 @@ pub async fn protected_resource_metadata(State(s): State<AppState>) -> Response 
 }
 
 /// Streamable HTTP MCP endpoint. Accepts a single JSON-RPC message or a batch.
-pub async fn mcp_http(State(s): State<AppState>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+pub async fn mcp_http(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
     let token = headers
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -95,11 +99,14 @@ async fn handle_one(db: &Db, ctx: &AuthContext, msg: &Value) -> Option<Value> {
                 .and_then(|p| p.get("protocolVersion"))
                 .and_then(Value::as_str)
                 .unwrap_or(PROTOCOL_FALLBACK);
-            Some(ok(id, json!({
-                "protocolVersion": pv,
-                "capabilities": { "tools": {} },
-                "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") }
-            })))
+            Some(ok(
+                id,
+                json!({
+                    "protocolVersion": pv,
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") }
+                }),
+            ))
         }
         "ping" => Some(ok(id, json!({}))),
         "tools/list" => Some(ok(id, json!({ "tools": tool_definitions() }))),
@@ -151,7 +158,11 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .map(|v| pretty(&v))
             .map_err(e),
         "list_documents" => db
-            .list_documents(ctx, arg_uuid(args, "project_id")?, args.get("limit").and_then(Value::as_i64).unwrap_or(50))
+            .list_documents(
+                ctx,
+                arg_uuid(args, "project_id")?,
+                args.get("limit").and_then(Value::as_i64).unwrap_or(50),
+            )
             .await
             .map(|v| pretty(&v))
             .map_err(e),
@@ -186,9 +197,19 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 Some("autosave") => VersionKind::Autosave,
                 _ => VersionKind::Checkpoint,
             };
-            match db.update_document(ctx, id, arg_str(args, "content")?, expected, kind).await.map_err(e)? {
-                UpdateOutcome::Updated(d) => Ok(format!("Updated to version {}", d.current_version)),
-                UpdateOutcome::Conflict { current_version, current_content, base_content } => Err(format!(
+            match db
+                .update_document(ctx, id, arg_str(args, "content")?, expected, kind)
+                .await
+                .map_err(e)?
+            {
+                UpdateOutcome::Updated(d) => {
+                    Ok(format!("Updated to version {}", d.current_version))
+                }
+                UpdateOutcome::Conflict {
+                    current_version,
+                    current_content,
+                    base_content,
+                } => Err(format!(
                     "CONFLICT: document is now at version {current_version}; your expected_version was \
                      stale so nothing was written. Re-fetch and merge.\n\n--- CURRENT ---\n{current_content}\n\
                      --- BASE ---\n{base_content}"
@@ -196,12 +217,20 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             }
         }
         "append_to_doc" => db
-            .append_to_document(ctx, arg_uuid(args, "document_id")?, arg_str(args, "content")?)
+            .append_to_document(
+                ctx,
+                arg_uuid(args, "document_id")?,
+                arg_str(args, "content")?,
+            )
             .await
             .map(|d| format!("Appended; now version {}", d.current_version))
             .map_err(e),
         "move_doc" => db
-            .move_document(ctx, arg_uuid(args, "document_id")?, arg_str(args, "new_path")?)
+            .move_document(
+                ctx,
+                arg_uuid(args, "document_id")?,
+                arg_str(args, "new_path")?,
+            )
             .await
             .map(|d| format!("Moved to {}", d.path))
             .map_err(e),
@@ -212,7 +241,10 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .map_err(e),
         "restore_version" => {
             let id = arg_uuid(args, "document_id")?;
-            let version = args.get("version").and_then(Value::as_i64).ok_or("missing required integer argument: version")?;
+            let version = args
+                .get("version")
+                .and_then(Value::as_i64)
+                .ok_or("missing required integer argument: version")?;
             db.restore_version(ctx, id, version)
                 .await
                 .map(|d| format!("Restored; now version {}", d.current_version))
@@ -224,11 +256,19 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .map(|v| pretty(&v))
             .map_err(e),
         "search_docs" => {
-            let pid = args.get("project_id").and_then(Value::as_str).and_then(|s| Uuid::parse_str(s).ok());
-            db.search(ctx, pid, arg_str(args, "query")?, args.get("limit").and_then(Value::as_i64).unwrap_or(20))
-                .await
-                .map(|hits| format_search(&hits))
-                .map_err(e)
+            let pid = args
+                .get("project_id")
+                .and_then(Value::as_str)
+                .and_then(|s| Uuid::parse_str(s).ok());
+            db.search(
+                ctx,
+                pid,
+                arg_str(args, "query")?,
+                args.get("limit").and_then(Value::as_i64).unwrap_or(20),
+            )
+            .await
+            .map(|hits| format_search(&hits))
+            .map_err(e)
         }
         "list_tags" => db.list_tags(ctx).await.map(|v| pretty(&v)).map_err(e),
         "add_tag" => db
@@ -239,7 +279,9 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
         "list_categories" => db.list_categories(ctx).await.map(|v| pretty(&v)).map_err(e),
         "create_category" => {
             let parent = match args.get("parent_id").and_then(Value::as_str) {
-                Some(s) => Some(Uuid::parse_str(s).map_err(|_| "parent_id is not a valid UUID".to_string())?),
+                Some(s) => Some(
+                    Uuid::parse_str(s).map_err(|_| "parent_id is not a valid UUID".to_string())?,
+                ),
                 None => None,
             };
             db.create_category(ctx, parent, arg_str(args, "slug")?, arg_str(args, "name")?)
@@ -248,7 +290,11 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
                 .map_err(e)
         }
         "categorize_doc" => db
-            .categorize_document(ctx, arg_uuid(args, "document_id")?, arg_uuid(args, "category_id")?)
+            .categorize_document(
+                ctx,
+                arg_uuid(args, "document_id")?,
+                arg_uuid(args, "category_id")?,
+            )
             .await
             .map(|_| "Filed under category.".to_string())
             .map_err(e),

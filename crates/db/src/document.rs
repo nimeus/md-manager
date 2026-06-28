@@ -2,7 +2,8 @@
 //! atomic append, restore, move, soft delete/undelete, and history.
 
 use mdm_core::model::{
-    AuthContext, Document, DocumentSummary, DocumentVersion, Role, VersionKind, VersionSummary,
+    AuthContext, Document, DocumentSummary, DocumentVersion, OrgRole, Role, VersionKind,
+    VersionSummary,
 };
 use mdm_core::{Error, Result, crypto, ids, rbac, validate};
 use serde_json::json;
@@ -43,7 +44,23 @@ impl Db {
         if !self.project_exists(&mut tx, project_id).await? {
             return Err(Error::invalid("project not found in this organization"));
         }
-        self.authorize_project(&mut tx, ctx, project_id, Role::Editor).await?;
+        self.authorize_project(&mut tx, ctx, project_id, Role::Editor)
+            .await?;
+
+        // Quota guard against agent create-loops.
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM documents WHERE project_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(project_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map_db)?;
+        if count >= self.max_docs_per_project {
+            return Err(Error::TooManyRequests(format!(
+                "project document limit reached ({})",
+                self.max_docs_per_project
+            )));
+        }
 
         let doc_id = ids::new_id();
         let hash = crypto::content_hash(content);
@@ -66,12 +83,26 @@ impl Db {
         .await
         .map_err(map_db)?;
 
-        self.insert_version(&mut tx, ctx, doc_id, 1, content, &hash, VersionKind::Checkpoint)
-            .await?;
+        self.insert_version(
+            &mut tx,
+            ctx,
+            doc_id,
+            1,
+            content,
+            &hash,
+            VersionKind::Checkpoint,
+        )
+        .await?;
         self.reindex_chunks(&mut tx, ctx, doc_id, content).await?;
-        audit(&mut tx, ctx, "doc.create", Some(&doc_id.to_string()), json!({"path": path}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.create",
+            Some(&doc_id.to_string()),
+            json!({"path": path}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(doc.into())
     }
@@ -88,7 +119,8 @@ impl Db {
         let Some(row) = row else {
             return Err(Error::NotFound);
         };
-        self.authorize_doc(&mut tx, ctx, doc_id, row.project_id, Role::Viewer).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, row.project_id, Role::Viewer)
+            .await?;
         tx.commit().await.map_err(map_db)?;
         Ok(row.into())
     }
@@ -112,7 +144,8 @@ impl Db {
         let Some(row) = row else {
             return Err(Error::NotFound);
         };
-        self.authorize_doc(&mut tx, ctx, row.id, row.project_id, Role::Viewer).await?;
+        self.authorize_doc(&mut tx, ctx, row.id, row.project_id, Role::Viewer)
+            .await?;
         tx.commit().await.map_err(map_db)?;
         Ok(row.into())
     }
@@ -124,14 +157,25 @@ impl Db {
         limit: i64,
     ) -> Result<Vec<DocumentSummary>> {
         rbac::require_read(ctx)?;
+        // Owners/admins see everything; others don't see docs they're explicitly denied.
+        let privileged = matches!(ctx.org_role, OrgRole::Owner | OrgRole::Admin);
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let rows = sqlx::query_as::<_, crate::rows::DocSummaryRow>(
             "SELECT id, project_id, path, title, current_version, updated_at
-             FROM documents WHERE project_id = $1 AND deleted_at IS NULL
-             ORDER BY path LIMIT $2",
+             FROM documents d
+             WHERE d.project_id = $1 AND d.deleted_at IS NULL
+               AND ($4 OR NOT EXISTS (
+                 SELECT 1 FROM document_grants g
+                 WHERE g.document_id = d.id AND g.role = 'none'
+                   AND ((g.subject_type = 'user' AND g.subject_id = $3)
+                     OR (g.subject_type = 'team' AND g.subject_id IN
+                         (SELECT team_id FROM team_members WHERE user_id = $3)))))
+             ORDER BY d.path LIMIT $2",
         )
         .bind(project_id)
         .bind(limit)
+        .bind(ctx.user_id)
+        .bind(privileged)
         .fetch_all(&mut *tx)
         .await
         .map_err(map_db)?;
@@ -154,7 +198,8 @@ impl Db {
 
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
-        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor)
+            .await?;
 
         if cur.current_version != expected_version {
             let base: Option<String> = sqlx::query_scalar(
@@ -174,7 +219,9 @@ impl Db {
         }
 
         let hash = crypto::content_hash(content);
-        let coalesced = self.try_coalesce(&mut tx, ctx, doc_id, content, &hash, kind).await?;
+        let coalesced = self
+            .try_coalesce(&mut tx, ctx, doc_id, content, &hash, kind)
+            .await?;
 
         let doc = if let Some(doc) = coalesced {
             doc
@@ -199,10 +246,15 @@ impl Db {
         };
 
         self.reindex_chunks(&mut tx, ctx, doc_id, content).await?;
-        audit(&mut tx, ctx, "doc.update", Some(&doc_id.to_string()),
-              json!({"version": doc.current_version}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.update",
+            Some(&doc_id.to_string()),
+            json!({"version": doc.current_version}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(UpdateOutcome::Updated(doc))
     }
@@ -216,7 +268,8 @@ impl Db {
     ) -> Result<Document> {
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
-        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor)
+            .await?;
 
         let mut new_content = cur.content.clone();
         if !new_content.is_empty() && !new_content.ends_with('\n') {
@@ -240,12 +293,27 @@ impl Db {
         .fetch_one(&mut *tx)
         .await
         .map_err(map_db)?;
-        self.insert_version(&mut tx, ctx, doc_id, new_version, &new_content, &hash, VersionKind::Autosave)
+        self.insert_version(
+            &mut tx,
+            ctx,
+            doc_id,
+            new_version,
+            &new_content,
+            &hash,
+            VersionKind::Autosave,
+        )
+        .await?;
+        self.reindex_chunks(&mut tx, ctx, doc_id, &new_content)
             .await?;
-        self.reindex_chunks(&mut tx, ctx, doc_id, &new_content).await?;
-        audit(&mut tx, ctx, "doc.append", Some(&doc_id.to_string()), json!({"version": new_version}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.append",
+            Some(&doc_id.to_string()),
+            json!({"version": new_version}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(doc.into())
     }
@@ -259,7 +327,8 @@ impl Db {
         validate::validate_path(new_path)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
-        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor)
+            .await?;
         let doc = sqlx::query_as::<_, crate::rows::DocumentRow>(&format!(
             "UPDATE documents SET path = $1, updated_by = $2, updated_at = now()
              WHERE id = $3 AND deleted_at IS NULL RETURNING {DOC_COLS}"
@@ -271,9 +340,15 @@ impl Db {
         .await
         .map_err(map_db)?
         .ok_or(Error::NotFound)?;
-        audit(&mut tx, ctx, "doc.move", Some(&doc_id.to_string()), json!({"path": new_path}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.move",
+            Some(&doc_id.to_string()),
+            json!({"path": new_path}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(doc.into())
     }
@@ -281,7 +356,8 @@ impl Db {
     pub async fn delete_document(&self, ctx: &AuthContext, doc_id: Uuid) -> Result<()> {
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
-        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor)
+            .await?;
         sqlx::query("UPDATE documents SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
             .bind(doc_id)
             .execute(&mut *tx)
@@ -293,9 +369,15 @@ impl Db {
             .execute(&mut *tx)
             .await
             .map_err(map_db)?;
-        audit(&mut tx, ctx, "doc.delete", Some(&doc_id.to_string()), json!({}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.delete",
+            Some(&doc_id.to_string()),
+            json!({}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(())
     }
@@ -310,7 +392,8 @@ impl Db {
         .await
         .map_err(map_db)?;
         let project_id = project_id.ok_or(Error::NotFound)?;
-        self.authorize_doc(&mut tx, ctx, doc_id, project_id, Role::Editor).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, project_id, Role::Editor)
+            .await?;
         let doc: Document = sqlx::query_as::<_, crate::rows::DocumentRow>(&format!(
             "UPDATE documents SET deleted_at = NULL, updated_at = now()
              WHERE id = $1 AND deleted_at IS NOT NULL RETURNING {DOC_COLS}"
@@ -321,10 +404,17 @@ impl Db {
         .map_err(map_db)?
         .ok_or(Error::NotFound)?
         .into();
-        self.reindex_chunks(&mut tx, ctx, doc_id, &doc.content).await?;
-        audit(&mut tx, ctx, "doc.undelete", Some(&doc_id.to_string()), json!({}))
-            .await
-            .map_err(map_db)?;
+        self.reindex_chunks(&mut tx, ctx, doc_id, &doc.content)
+            .await?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.undelete",
+            Some(&doc_id.to_string()),
+            json!({}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(doc)
     }
@@ -338,7 +428,8 @@ impl Db {
     ) -> Result<Document> {
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
-        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor)
+            .await?;
         let snapshot: String = sqlx::query_scalar(
             "SELECT content FROM document_versions WHERE document_id = $1 AND version = $2",
         )
@@ -364,13 +455,26 @@ impl Db {
         .fetch_one(&mut *tx)
         .await
         .map_err(map_db)?;
-        self.insert_version(&mut tx, ctx, doc_id, new_version, &snapshot, &hash, VersionKind::Checkpoint)
-            .await?;
+        self.insert_version(
+            &mut tx,
+            ctx,
+            doc_id,
+            new_version,
+            &snapshot,
+            &hash,
+            VersionKind::Checkpoint,
+        )
+        .await?;
         self.reindex_chunks(&mut tx, ctx, doc_id, &snapshot).await?;
-        audit(&mut tx, ctx, "doc.restore", Some(&doc_id.to_string()),
-              json!({"restored_from": version, "new_version": new_version}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "doc.restore",
+            Some(&doc_id.to_string()),
+            json!({"restored_from": version, "new_version": new_version}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(doc.into())
     }
@@ -448,7 +552,8 @@ impl Db {
         .await
         .map_err(map_db)?;
         let project_id = project_id.ok_or(Error::NotFound)?;
-        self.authorize_doc(tx, ctx, doc_id, project_id, Role::Viewer).await
+        self.authorize_doc(tx, ctx, doc_id, project_id, Role::Viewer)
+            .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -510,8 +615,8 @@ impl Db {
         let Some(latest) = latest else {
             return Ok(None);
         };
-        let within_window =
-            (OffsetDateTime::now_utc() - latest.created_at) < Duration::seconds(self.autosave_debounce_secs);
+        let within_window = (OffsetDateTime::now_utc() - latest.created_at)
+            < Duration::seconds(self.autosave_debounce_secs);
         let same_actor =
             latest.actor_id == ctx.user_id && latest.actor_type == ctx.actor_type.as_str();
         if !(latest.version_kind == "autosave" && same_actor && within_window) {

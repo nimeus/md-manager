@@ -28,7 +28,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] startup assertion `md_app` is `NOBYPASSRLS`
 - [x] `config` crate (figment + Secret + tracing)
 - [x] `scripts/db-setup.sh` (roles + dev/test DBs) + `.env.example`  *(replaces docker-compose; Postgres via brew)*
-- [ ] CI workflow (build + run migrations on a throwaway DB + tests)   ← still open
+- [x] CI workflow (`.github/workflows/ci.yml`: Postgres service, fmt --check, clippy -D warnings, build, test) — codebase is fmt + clippy clean
 
 ## Phase 1 — Agent-surface MVP ✅
 - [x] Org/project/membership + RLS/RBAC (owner/admin/member/viewer)
@@ -48,8 +48,8 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] End-to-end verified: CLI + MCP agent loops, cross-surface consistency
 - [x] **Categories** (org-scoped, hierarchical, cross-project) + document_categories — migration 0003, db, REST, CLI (`mdm cat`), MCP (18 tools total), integration tests
 - [x] **Teams + per-project/per-doc grants + full RBAC lattice** (deny-veto, most-permissive, owner override, viewer-ceiling) — migration 0004, `mdm_core::rbac::resolve_doc_role`, per-doc authorization, db/REST/CLI (`mdm team`/`mdm grant`); verified live (member deny, owner override, team-deny-vetoes-grant)
-- [ ] Rate limits / quotas (`tower-governor`, max docs/project)   ← deferred polish
-- [ ] Hide per-doc-denied docs from list/search results (currently enforced on access, not listing)
+- [x] Rate limits (per-user, `governor`) + per-project document quota — config-driven, verified live (429s) + quota integration test
+- [x] Hide per-doc-denied docs from list/search results (not just on access)
 
 ## Phase 2 — Web connectors (resource server ✅; Logto go-live external)
 - [x] Streamable HTTP `/mcp` transport (served by the API) — 15 tools, verified via curl

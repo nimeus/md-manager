@@ -26,6 +26,7 @@ impl IntoResponse for ApiError {
             Conflict { .. } => (StatusCode::CONFLICT, "conflict"),
             AlreadyExists(_) => (StatusCode::CONFLICT, "already_exists"),
             Invalid(_) => (StatusCode::BAD_REQUEST, "invalid"),
+            TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             Internal(detail) => {
                 tracing::error!(detail, "internal error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal")

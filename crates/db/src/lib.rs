@@ -36,6 +36,7 @@ pub struct Db {
     pepper: String,
     max_doc_bytes: i64,
     autosave_debounce_secs: i64,
+    max_docs_per_project: i64,
 }
 
 impl Db {
@@ -46,6 +47,7 @@ impl Db {
         pepper: String,
         max_doc_bytes: i64,
         autosave_debounce_secs: i64,
+        max_docs_per_project: i64,
     ) -> anyhow::Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(max_connections)
@@ -57,6 +59,7 @@ impl Db {
             pepper,
             max_doc_bytes,
             autosave_debounce_secs,
+            max_docs_per_project,
         })
     }
 
@@ -71,22 +74,18 @@ impl Db {
             .connect(owner_database_url)
             .await
             .context("connecting as the owner role to run migrations")?;
-        MIGRATOR
-            .run(&pool)
-            .await
-            .context("running migrations")?;
+        MIGRATOR.run(&pool).await.context("running migrations")?;
         pool.close().await;
         Ok(())
     }
 
     /// Safety check: the app role must NOT be able to bypass RLS. Call at startup.
     pub async fn assert_app_role_not_bypassrls(&self) -> anyhow::Result<()> {
-        let bypass: bool = sqlx::query_scalar(
-            "SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .context("checking rolbypassrls")?;
+        let bypass: bool =
+            sqlx::query_scalar("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")
+                .fetch_one(&self.pool)
+                .await
+                .context("checking rolbypassrls")?;
         anyhow::ensure!(
             !bypass,
             "SECURITY: app role can bypass RLS — connect as a NOBYPASSRLS, non-owner role"
