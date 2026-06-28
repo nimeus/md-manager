@@ -338,6 +338,22 @@ async fn call_tool(
             .await
             .map(|_| "Filed under category.".to_string())
             .map_err(e),
+        "list_docs_by_tag" => state
+            .db
+            .list_documents_with_tag(
+                ctx,
+                arg_str(args, "tag")?,
+                args.get("limit").and_then(Value::as_i64).unwrap_or(50),
+            )
+            .await
+            .map(|v| pretty(&v))
+            .map_err(e),
+        "list_docs_by_category" => state
+            .db
+            .list_documents_in_category(ctx, arg_uuid(args, "category_id")?)
+            .await
+            .map(|v| pretty(&v))
+            .map_err(e),
         other => Err(format!("unknown tool: {other}")),
     }
 }

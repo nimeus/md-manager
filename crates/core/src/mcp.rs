@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub const PROTOCOL_FALLBACK: &str = "2024-11-05";
 pub const SERVER_NAME: &str = "md-manager";
 
-/// The 15 advertised tools, as JSON-Schema tool definitions for `tools/list`.
+/// The advertised tools, as JSON-Schema tool definitions for `tools/list`.
 pub fn tool_definitions() -> Value {
     let doc_id = json!({ "document_id": { "type": "string", "description": "Document UUID" } });
     json!([
@@ -126,6 +126,18 @@ pub fn tool_definitions() -> Value {
             "File a document under a category.",
             json!({ "document_id": { "type": "string" }, "category_id": { "type": "string" } }),
             &["document_id", "category_id"]
+        ),
+        tool(
+            "list_docs_by_tag",
+            "List documents carrying a tag, across all projects in your organization.",
+            json!({ "tag": { "type": "string", "description": "Tag name" } }),
+            &["tag"]
+        ),
+        tool(
+            "list_docs_by_category",
+            "List documents filed under a category.",
+            json!({ "category_id": { "type": "string" } }),
+            &["category_id"]
         ),
     ])
 }

@@ -41,12 +41,13 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] API keys: HMAC+pepper, prefix lookup, mint/list/revoke, creator-role lifecycle binding
 - [x] Audit log (writes + key events)
 - [x] **HTTP API** (Axum): all endpoints + auth extractor + bootstrap + error mapping
-- [x] **MCP server** (stdio JSON-RPC): 15 tools, raw-markdown reads, conflict-aware updates
+- [x] **MCP server** (stdio JSON-RPC): 20 tools, raw-markdown reads, conflict-aware updates
+- [x] MCP/CLI parity: retrieve documents by tag (`list_docs_by_tag`) and by category (`list_docs_by_category`) — added to both MCP surfaces (stdio + HTTP); verified live over `/mcp` (tools/list = 20; both return the doc)
 - [x] **CLI `mdm`**: auth/whoami/org/proj/doc/search/tag/keys; raw-markdown to stdout; stdin/-m/--file body
 - [x] `mdm-client`: shared async HTTP client (used by MCP + CLI)
 - [x] Integration tests vs Postgres: tenant isolation, concurrency, RBAC, search, key revoke
 - [x] End-to-end verified: CLI + MCP agent loops, cross-surface consistency
-- [x] **Categories** (org-scoped, hierarchical, cross-project) + document_categories — migration 0003, db, REST, CLI (`mdm cat`), MCP (18 tools total), integration tests
+- [x] **Categories** (org-scoped, hierarchical, cross-project) + document_categories — migration 0003, db, REST, CLI (`mdm cat`), MCP, integration tests
 - [x] **Teams + per-project/per-doc grants + full RBAC lattice** (deny-veto, most-permissive, owner override, viewer-ceiling) — migration 0004, `mdm_core::rbac::resolve_doc_role`, per-doc authorization, db/REST/CLI (`mdm team`/`mdm grant`); verified live (member deny, owner override, team-deny-vetoes-grant)
 - [x] Rate limits (per-user, `governor`) + per-project document quota — config-driven, verified live (429s) + quota integration test
 - [x] Hide per-doc-denied docs from list/search results (not just on access)
@@ -54,7 +55,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] **Audit query** — admin-only `GET /v1/audit` (+ `mdm audit`, filter by target/action), reads the who/what/when written on every action; RLS-scoped; integration test (entries present, action filter, non-admin Forbidden)
 
 ## Phase 2 — Web connectors (resource server ✅; Logto go-live external)
-- [x] Streamable HTTP `/mcp` transport (served by the API) — 15 tools, verified via curl
+- [x] Streamable HTTP `/mcp` transport (served by the API) — 20 tools, verified via curl
 - [x] OAuth resource server: PRM endpoint, JWKS cache, RS256 `aud`/`iss`/`exp` validation (3 unit tests)
 - [x] Dual auth (API key OR JWT) + `WWW-Authenticate` challenge
 - [x] migration 0002 `users.logto_sub` + `authenticate_oauth(sub, org)`

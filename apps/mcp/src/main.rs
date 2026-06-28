@@ -270,6 +270,16 @@ async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, 
             .await
             .map(|_| "Filed under category.".to_string())
             .map_err(fmt_err),
+        "list_docs_by_tag" => client
+            .list_tag_documents(arg_str(args, "tag")?)
+            .await
+            .map(|v| pretty(&v))
+            .map_err(fmt_err),
+        "list_docs_by_category" => client
+            .list_category_documents(arg_str(args, "category_id")?)
+            .await
+            .map(|v| pretty(&v))
+            .map_err(fmt_err),
         other => Err(format!("unknown tool: {other}")),
     }
 }
