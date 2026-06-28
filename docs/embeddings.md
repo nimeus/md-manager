@@ -28,8 +28,13 @@ startup (`EmbeddingStore::connect`), sized from `MDM_EMBEDDING_DIMENSIONS`. It a
 `doc_chunks` to `NO FORCE ROW LEVEL SECURITY` so the owner-run worker can process chunks
 across orgs (a trusted system process; the app role `md_app` stays RLS-scoped).
 
-> Changing the model/dimensions later requires dropping the column first
-> (`ALTER TABLE doc_chunks DROP COLUMN embedding;`) so it can be recreated at the new width.
+> **Changing the model/dimensions later is automatic.** On startup the worker compares the
+> existing column's width (pgvector stores it in `atttypmod`) to `MDM_EMBEDDING_DIMENSIONS`;
+> if they differ it drops and recreates the column at the new width and resets the per-chunk
+> worker bookkeeping (including dead-letters), so every chunk re-embeds under the new model.
+> Embeddings are a derived cache — document text is the source of truth — so nothing is lost.
+> (Just keep `DIMENSIONS` matched to the model; a mismatch against the *model's* real output
+> still fails at the provider, as it must.)
 
 ## 2. Configure (all env)
 

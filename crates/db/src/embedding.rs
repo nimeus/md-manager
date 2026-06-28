@@ -120,6 +120,18 @@ impl EmbeddingStore {
         Ok(dead_lettered as u64)
     }
 
+    /// Current width of the `embedding` column (pgvector stores the dimension in
+    /// `atttypmod`), or `None` if the column doesn't exist. For ops/tests.
+    pub async fn embedding_dim(&self) -> anyhow::Result<Option<i32>> {
+        Ok(sqlx::query_scalar(
+            "SELECT a.atttypmod FROM pg_attribute a
+             JOIN pg_class c ON c.oid = a.attrelid
+             WHERE c.relname = 'doc_chunks' AND a.attname = 'embedding' AND NOT a.attisdropped",
+        )
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// Count of dead-lettered chunks (gave up after repeated failures) — for ops/tests.
     pub async fn dead_letter_count(&self) -> anyhow::Result<i64> {
         Ok(
@@ -174,6 +186,41 @@ async fn ensure_schema(pool: &PgPool, dims: i32) -> anyhow::Result<()> {
         has_ext,
         "pgvector not installed — run `CREATE EXTENSION vector;` as a superuser in the app database (see docs/embeddings.md)"
     );
+    // If an embedding column already exists at a *different* width (the operator switched to
+    // a model with another output dimension), drop it so it can be recreated at the new size.
+    // For pgvector a `vector(N)` column stores N directly in `atttypmod`. Embeddings are a
+    // derived cache (document text is the source of truth), so we simply re-embed: clear the
+    // column and reset the per-chunk worker bookkeeping (incl. dead-letters) so every chunk is
+    // re-queued under the new model. Without this, `ADD COLUMN IF NOT EXISTS` would silently
+    // keep the old width and stores/searches would fail on a dimension mismatch.
+    let existing_dim: Option<i32> = sqlx::query_scalar(
+        "SELECT a.atttypmod FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid
+         WHERE c.relname = 'doc_chunks' AND a.attname = 'embedding' AND NOT a.attisdropped",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if let Some(old) = existing_dim
+        && old != dims
+    {
+        tracing::warn!(
+            old_dim = old,
+            new_dim = dims,
+            "embedding dimension changed — dropping the embedding column to re-embed all chunks"
+        );
+        // Dropping the column also drops its dependent indexes; both are recreated below.
+        sqlx::query("ALTER TABLE doc_chunks DROP COLUMN embedding")
+            .execute(pool)
+            .await
+            .context("dropping stale embedding column")?;
+        sqlx::query(
+            "UPDATE doc_chunks SET embed_attempts = 0, embed_failed = false,
+                 embed_next_attempt_at = NULL, embed_last_error = NULL",
+        )
+        .execute(pool)
+        .await
+        .context("resetting embedding bookkeeping after dimension change")?;
+    }
     // dims is a validated integer; safe to inline.
     sqlx::query(&format!(
         "ALTER TABLE doc_chunks ADD COLUMN IF NOT EXISTS embedding vector({dims})"

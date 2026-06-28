@@ -624,7 +624,69 @@ async fn full_db_layer() {
             "storing an embedding clears the dead-letter flag"
         );
 
-        eprintln!("✓ pgvector semantic + hybrid + dedup + backoff/dead-letter verified");
+        // Model/dimension change: reconnecting at a different width drops + recreates the
+        // embedding column (it's a derived cache), clearing all vectors and resetting the
+        // worker bookkeeping so everything — including dead-lettered chunks — re-embeds.
+        assert_eq!(
+            store.embedding_dim().await.unwrap(),
+            Some(3),
+            "column is vector(3)"
+        );
+        db.create_document(
+            &ctx_a,
+            proj.id,
+            "dim/doc",
+            "Dim",
+            "dimension change content",
+        )
+        .await
+        .expect("dim doc");
+        let victim = store
+            .pending(1000)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|(_, t)| t.contains("dimension change"))
+            .map(|(id, _)| id)
+            .expect("victim pending");
+        store.mark_failed(&[victim], "x", 1, 1).await.unwrap(); // max_attempts=1 -> dead now
+        assert_eq!(
+            store.dead_letter_count().await.unwrap(),
+            1,
+            "victim dead-lettered"
+        );
+
+        let store4 = EmbeddingStore::connect(&owner_url(), 4)
+            .await
+            .expect("reconnect at dim 4");
+        assert_eq!(
+            store4.embedding_dim().await.unwrap(),
+            Some(4),
+            "column recreated at vector(4)"
+        );
+        assert_eq!(
+            store4.embedded_count(pdoc.id).await.unwrap(),
+            0,
+            "all embeddings cleared on dimension change"
+        );
+        assert_eq!(
+            store4.dead_letter_count().await.unwrap(),
+            0,
+            "dimension change resets dead-letters so they re-embed"
+        );
+        assert!(
+            store4
+                .pending(1000)
+                .await
+                .unwrap()
+                .iter()
+                .any(|(id, _)| *id == victim),
+            "the formerly dead-lettered chunk is re-queued under the new model"
+        );
+
+        eprintln!(
+            "✓ pgvector semantic + hybrid + dedup + backoff/dead-letter + dim-change verified"
+        );
     } else {
         eprintln!("• skipping pgvector test (set MDM_TEST_SUPERUSER_URL to run)");
     }

@@ -83,7 +83,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] Verified: pgvector semantic+hybrid (deterministic vectors) + live OpenRouter wiring (needs a real key to embed)
 - [x] Embedding-cost dedup: per-chunk `content_hash` (migration 0006) — reindex preserves unchanged chunks' embeddings (diff, not delete-all), worker copies embeddings for identical content; verified (editing one section keeps the other's embedding)
 - [x] Embedding backoff + dead-letter (migration 0007): per-chunk `embed_attempts`/`embed_next_attempt_at`/`embed_failed`/`embed_last_error`; `pending()` skips backed-off/dead chunks; worker isolates a failed batch one-chunk-at-a-time (poison input can't block batch-mates); env-driven `BACKOFF_BASE_SECS`/`MAX_ATTEMPTS`; verified (backoff hides chunk, 3rd failure dead-letters, store clears it)
-- [ ] `embedding-model`/`dims` change migration helper (currently manual column drop)
+- [x] Embedding model/dimension change: `ensure_schema` detects a width change (pgvector `atttypmod`) and drops+recreates the `embedding` column, clearing vectors and resetting worker bookkeeping (incl. dead-letters) so all chunks re-embed under the new model — instead of silently keeping the old width; verified (reconnect at new dim → column rebuilt, embeddings cleared, dead-letters re-queued)
 
 ## Phase 5 — Realtime + scale
 - [ ] Yjs/CRDT over Rust websocket; OTel + alerting; version compaction; SSO
