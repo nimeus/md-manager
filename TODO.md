@@ -11,7 +11,10 @@ stdio, **and MCP over HTTP** (with an API key today; with Logto-issued OAuth JWT
 
 **Remaining for web connectors (external):** run self-hosted Logto + expose over public HTTPS, then
 the live Claude.ai/ChatGPT connector spike. See [docs/oauth-logto.md](docs/oauth-logto.md).
-**Next build:** Phase 3 — Next.js web app.
+
+**Phase 3 web app (`frontend/`):** code complete (Next.js 15 BFF). ⚠️ NOT built in this environment —
+the npm registry was unreachable (cargo/crates.io works; npm doesn't). Run `npm install && npm run build`
+on a machine with npm access; see [frontend/README.md](frontend/README.md).
 
 ---
 
@@ -58,11 +61,16 @@ the live Claude.ai/ChatGPT connector spike. See [docs/oauth-logto.md](docs/oauth
 - [ ] JIT identity/org provisioning + self-serve account linking
 - [ ] BFF OAuth callback + cookie session (lands with the Phase 3 web app)
 
-## Phase 3 — Human web app (Next.js)
-- [ ] App shell + Logto BFF auth + org/project switcher
-- [ ] Doc tree + CodeMirror 6 editor (inline preview)
-- [ ] Version history + restore + conflict/merge UI
-- [ ] Tag/category management, search UI + `cmdk`, API-keys screen, share links
+## Phase 3 — Human web app (Next.js) — code complete, build externally
+- [x] Next.js 15 App Router + React 19 + Tailwind v4 scaffold (`frontend/`)
+- [x] BFF auth: httpOnly session cookie (API key) + middleware guard + login page/action
+- [x] Server API client (`lib/api.ts`) + server actions (`lib/actions.ts`)
+- [x] App shell + nav; projects list/create; project → documents list/create
+- [x] Markdown editor (edit/preview) with **conflict-aware save** (409 → load current / overwrite)
+- [x] Version history + restore; document delete; search page; API-keys (mint shown-once / revoke)
+- [ ] **Run `npm install && npm run build`** + headless verify (blocked here: npm unreachable)
+- [ ] Swap API-key login → Logto OAuth BFF flow
+- [ ] CodeMirror 6 editor; tags/categories UI; org/project switcher; `cmdk`; share links
 
 ## Phase 4 — Semantic search
 - [ ] pgvector + `embedding halfvec(1024)` + HNSW + async embedding worker

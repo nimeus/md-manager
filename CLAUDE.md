@@ -6,7 +6,7 @@ Guidance for Claude Code working in this repo. Keep current as the project evolv
 Multi-tenant SaaS for managing & sharing **markdown/text docs that live ONLY in Postgres** (never as files), usable by both humans (web UI, later) and AI agents (MCP server + CLI) under identical rules.
 
 - **Plan:** [docs/PLAN.md](docs/PLAN.md) · **Tracker:** [TODO.md](TODO.md)
-- **Status:** ✅ Phase 1 MVP (API + CLI + stdio MCP) + ✅ Phase 2 resource server (remote MCP over HTTP at `/mcp` + OAuth 2.1 JWT validation). Web-connector go-live (run Logto + HTTPS) is external — see [docs/oauth-logto.md](docs/oauth-logto.md). Next build: Phase 3 web app.
+- **Status:** ✅ Phase 1 MVP (API + CLI + stdio MCP) · ✅ Phase 2 resource server (remote MCP over HTTP + OAuth JWT) · ✅ Phase 3 web app code (`frontend/`, Next.js BFF — authored but **not built here**: npm registry unreachable, run `npm install && npm run build` elsewhere). Web-connector go-live needs Logto — see [docs/oauth-logto.md](docs/oauth-logto.md).
 
 ## Stack
 Rust cargo workspace · Postgres 17 (local via Homebrew; no Docker) · Next.js (Phase 3) · self-hosted Logto (Phase 2).
@@ -21,8 +21,11 @@ apps/api       (mdm-api)    Axum HTTP API: REST (v1) + remote MCP at POST /mcp +
 apps/mcp       (mdm-mcp)    stdio MCP server — JSON-RPC 2.0, dispatches via HTTP client. Bin: mdm-mcp
                             (tool schemas shared via mdm_core::mcp; api/mcp dispatch to db, stdio dispatches to the API)
 apps/cli       (mdm-cli)    clap CLI. Bin: `mdm`
-migrations/                 sqlx migrations (0001_init.sql)
+migrations/                 sqlx migrations (0001_init.sql, 0002_logto_sub.sql)
+frontend/                   Next.js 15 web app (BFF over the API; httpOnly cookie holds the key). Build with npm.
 ```
+
+**Network note:** in the authoring sandbox, cargo/crates.io + GitHub work but **npm registry is unreachable** — so the Rust side is fully built+tested here; `frontend/` is authored but must be `npm install`ed elsewhere.
 Layering: `core` (pure) ← `db` (SQL/txn, calls core) ← `api` (HTTP). `cli`/`mcp` → `mdm-client` → HTTP API.
 All business rules live in `db`'s service (used by `api`) — `cli`/`mcp` go through the API, so every surface enforces the same rules.
 

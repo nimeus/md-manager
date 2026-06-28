@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-1.5
+           text-sm font-medium text-white transition hover:bg-indigo-500
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-zinc-700
+           bg-transparent px-3 py-1.5 text-sm font-medium text-zinc-200 transition
+           hover:bg-zinc-800;
+  }
+  .input {
+    @apply w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100
+           outline-none transition placeholder:text-zinc-500 focus:border-indigo-500;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+  }
+  .card {
+    @apply rounded-lg border border-zinc-800 bg-zinc-900/40 p-4;
+  }
+}
+
+/* Minimal markdown preview styling */
+.prose-md h1 { @apply mb-3 mt-1 text-2xl font-bold; }
+.prose-md h2 { @apply mb-2 mt-4 text-xl font-semibold; }
+.prose-md h3 { @apply mb-2 mt-3 text-lg font-semibold; }
+.prose-md p { @apply my-2 leading-relaxed text-zinc-300; }
+.prose-md ul { @apply my-2 list-disc pl-6 text-zinc-300; }
+.prose-md ol { @apply my-2 list-decimal pl-6 text-zinc-300; }
+.prose-md code { @apply rounded bg-zinc-800 px-1 py-0.5 text-sm text-amber-300; }
+.prose-md pre { @apply my-3 overflow-x-auto rounded-md bg-zinc-900 p-3 text-sm; }
+.prose-md pre code { @apply bg-transparent p-0 text-zinc-200; }
+.prose-md a { @apply text-indigo-400 underline; }
+.prose-md blockquote { @apply border-l-2 border-zinc-700 pl-3 text-zinc-400; }
