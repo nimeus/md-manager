@@ -252,6 +252,14 @@ impl Client {
         .await
     }
 
+    pub async fn list_tag_documents(&self, name: &str) -> R<Value> {
+        self.run(
+            self.http
+                .get(self.url(&format!("/v1/tags/{name}/documents"))),
+        )
+        .await
+    }
+
     // --- categories ------------------------------------------------------
 
     pub async fn list_categories(&self) -> R<Value> {

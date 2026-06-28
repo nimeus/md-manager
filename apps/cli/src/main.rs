@@ -260,7 +260,14 @@ struct SearchArgs {
 #[derive(Subcommand)]
 enum TagCmd {
     List,
-    Add { doc_id: String, name: String },
+    Add {
+        doc_id: String,
+        name: String,
+    },
+    /// List documents carrying a tag
+    Docs {
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -587,6 +594,7 @@ async fn run(cli: Cli) -> Result<()> {
                 TagCmd::Add { doc_id, name } => {
                     print_json(&c.add_document_tag(doc_id, name).await?)
                 }
+                TagCmd::Docs { name } => print_json(&c.list_tag_documents(name).await?),
             }
         }
 

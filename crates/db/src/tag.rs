@@ -1,6 +1,6 @@
 //! Org-scoped tags and document tagging.
 
-use mdm_core::model::{AuthContext, Tag};
+use mdm_core::model::{AuthContext, DocumentSummary, OrgRole, Tag};
 use mdm_core::{Result, ids, rbac};
 use serde_json::json;
 use uuid::Uuid;
@@ -78,6 +78,41 @@ impl Db {
              WHERE dt.document_id = $1 ORDER BY t.name",
         )
         .bind(doc_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(map_db)?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    /// List documents carrying a given tag (by name), deny-filtered like `list_documents`.
+    pub async fn list_documents_with_tag(
+        &self,
+        ctx: &AuthContext,
+        tag_name: &str,
+        limit: i64,
+    ) -> Result<Vec<DocumentSummary>> {
+        rbac::require_read(ctx)?;
+        let privileged = matches!(ctx.org_role, OrgRole::Owner | OrgRole::Admin);
+        let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
+        let rows = sqlx::query_as::<_, crate::rows::DocSummaryRow>(
+            "SELECT d.id, d.project_id, d.path, d.title, d.current_version, d.updated_at
+             FROM documents d
+             JOIN document_tags dt ON dt.document_id = d.id
+             JOIN tags t ON t.id = dt.tag_id
+             WHERE t.name = $1 AND d.deleted_at IS NULL
+               AND ($3 OR NOT EXISTS (
+                 SELECT 1 FROM document_grants g
+                 WHERE g.document_id = d.id AND g.role = 'none'
+                   AND ((g.subject_type = 'user' AND g.subject_id = $4)
+                     OR (g.subject_type = 'team' AND g.subject_id IN
+                         (SELECT team_id FROM team_members WHERE user_id = $4)))))
+             ORDER BY d.path LIMIT $2",
+        )
+        .bind(tag_name)
+        .bind(limit)
+        .bind(privileged)
+        .bind(ctx.user_id)
         .fetch_all(&mut *tx)
         .await
         .map_err(map_db)?;

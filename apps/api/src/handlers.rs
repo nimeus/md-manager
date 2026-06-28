@@ -264,6 +264,16 @@ pub async fn add_document_tag(
     Ok((StatusCode::CREATED, Json(tag)).into_response())
 }
 
+pub async fn list_tag_documents(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(name): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(
+        s.db.list_documents_with_tag(&ctx, &name, 200).await?
+    )))
+}
+
 // --- categories ------------------------------------------------------------
 
 pub async fn list_categories(

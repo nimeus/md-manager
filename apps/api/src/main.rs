@@ -72,6 +72,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/v1/tags", get(handlers::list_tags))
         .route(
+            "/v1/tags/{name}/documents",
+            get(handlers::list_tag_documents),
+        )
+        .route(
             "/v1/categories",
             get(handlers::list_categories).post(handlers::create_category),
         )

@@ -388,6 +388,26 @@ async fn full_db_layer() {
         Err(mdm_core::Error::NotFound)
     ));
 
+    // --- list documents by tag ----------------------------------------------
+    db.add_document_tag(&ctx_a, doc.id, "runbook")
+        .await
+        .expect("tag");
+    let tagged = db
+        .list_documents_with_tag(&ctx_a, "runbook", 50)
+        .await
+        .unwrap();
+    assert!(
+        tagged.iter().any(|d| d.id == doc.id),
+        "tag filter returns the tagged doc"
+    );
+    assert!(
+        db.list_documents_with_tag(&ctx_a, "nope", 50)
+            .await
+            .unwrap()
+            .is_empty(),
+        "unknown tag yields nothing"
+    );
+
     // --- audit log (admin reads who-did-what) --------------------------------
     let audit = db.list_audit(&ctx_a, None, None, 200).await.expect("audit");
     assert!(

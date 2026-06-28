@@ -37,7 +37,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] Optimistic concurrency: stale → 409 with `current` + `base` content for 3-way merge
 - [x] Atomic `append` (FOR UPDATE serialised), restore, soft delete/undelete, move, history
 - [x] Keyword FTS (generated tsvector + GIN, doc-level aggregation, snippet highlights)
-- [x] Tags (org-scoped) + document tagging
+- [x] Tags (org-scoped) + document tagging + **list documents by tag** (deny-filtered reverse lookup: db/REST `GET /v1/tags/{name}/documents`/CLI `mdm tag docs`/integration test)
 - [x] API keys: HMAC+pepper, prefix lookup, mint/list/revoke, creator-role lifecycle binding
 - [x] Audit log (writes + key events)
 - [x] **HTTP API** (Axum): all endpoints + auth extractor + bootstrap + error mapping
