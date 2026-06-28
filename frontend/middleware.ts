@@ -8,7 +8,10 @@ export function middleware(request: NextRequest) {
   const signedIn = request.cookies.has("mdm_session");
   const { pathname } = request.nextUrl;
 
-  if (!signedIn && pathname !== "/login") {
+  // The Google OAuth routes must run while signed-out (they create the session).
+  const isAuthFlow = pathname === "/login" || pathname.startsWith("/auth/");
+
+  if (!signedIn && !isAuthFlow) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (signedIn && pathname === "/login") {

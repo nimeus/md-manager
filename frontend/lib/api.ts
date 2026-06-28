@@ -25,8 +25,10 @@ async function raw(
   if (!session) return { status: 401, data: { error: "unauthorized", message: "not signed in" } };
 
   const headers: Record<string, string> = {
-    authorization: `Bearer ${session.apiKey}`,
+    authorization: `Bearer ${session.token}`,
   };
+  // The org switcher: tell the API which of the user's orgs to act in.
+  if (session.currentOrg) headers["x-org-id"] = session.currentOrg;
   if (init?.body) headers["content-type"] = "application/json";
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -113,4 +115,38 @@ export const api = {
   listKeys: () => req("/v1/api-keys"),
   createKey: (name: string, role: string) => req("/v1/api-keys", json({ name, role })),
   revokeKey: (id: string) => req(`/v1/api-keys/${id}`, { method: "DELETE" }),
+
+  // orgs + invitations (web SaaS)
+  myOrgs: () => req("/v1/me/orgs"),
+  createOrg: (slug: string, name: string) => req("/v1/orgs", json({ slug, name })),
+  listInvitations: () => req("/v1/invitations"),
+  createInvitation: (email: string, role: string) =>
+    req("/v1/invitations", json({ email, role })),
+  revokeInvitation: (id: string) => req(`/v1/invitations/${id}`, { method: "DELETE" }),
 };
+
+/** Result of exchanging a Google ID token for a backend session (used only during login). */
+export type GoogleExchange = {
+  session_token: string;
+  user: { id: string; email: string; name: string };
+  orgs: { id: string; slug: string; name: string; role: string }[];
+};
+
+/**
+ * Exchange a verified Google ID token for a backend session token. Session-less (this IS the
+ * login), so it calls the API directly. Throws [`ApiError`] on failure.
+ */
+export async function exchangeGoogleToken(idToken: string): Promise<GoogleExchange> {
+  const res = await fetch(`${API_BASE}/v1/auth/google`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id_token: idToken }),
+    cache: "no-store",
+  });
+  const text = await res.text();
+  const data = text ? safeJson(text) : null;
+  if (res.status >= 400) {
+    throw new ApiError(res.status, data?.error ?? "error", data?.message ?? `HTTP ${res.status}`);
+  }
+  return data as GoogleExchange;
+}

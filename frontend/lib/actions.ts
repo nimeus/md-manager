@@ -4,28 +4,46 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { api, ApiError, type UpdateResult } from "./api";
-import { clearSession, setSession } from "./session";
-
-export type FormState = { error?: string } | null;
-
-export async function loginAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const apiKey = String(formData.get("apiKey") ?? "").trim();
-  if (!apiKey) return { error: "An API key is required." };
-
-  // The API host is fixed server-side (MDM_API_URL); clients only supply the key.
-  await setSession({ apiKey });
-  try {
-    await api.whoami();
-  } catch {
-    await clearSession();
-    return { error: "Could not authenticate — check the key (and that the server can reach the API)." };
-  }
-  redirect("/projects");
-}
+import { clearSession, setCurrentOrg } from "./session";
 
 export async function logoutAction(): Promise<void> {
   await clearSession();
   redirect("/login");
+}
+
+// --- orgs + invitations ------------------------------------------------------
+// (Org switching is a GET route handler — app/auth/switch — so plain links work and the
+//  cookie can be repaired during layout render via redirect.)
+
+/** Create a new org (caller becomes owner) and switch into it. */
+export async function createOrgAction(formData: FormData): Promise<void> {
+  const slug = String(formData.get("slug") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const org = await api.createOrg(slug, name);
+  await setCurrentOrg(org.id);
+  redirect("/projects");
+}
+
+/** Invite a teammate by email to the current org. */
+export async function inviteAction(
+  _prev: { ok?: string; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok?: string; error?: string } | null> {
+  const email = String(formData.get("email") ?? "").trim();
+  const role = String(formData.get("role") ?? "member");
+  if (!email) return { error: "An email is required." };
+  try {
+    await api.createInvitation(email, role);
+    revalidatePath("/settings/members");
+    return { ok: `Invited ${email}. They'll join when they sign in with Google using that address.` };
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "Failed to send invite" };
+  }
+}
+
+export async function revokeInviteAction(formData: FormData): Promise<void> {
+  await api.revokeInvitation(String(formData.get("id") ?? ""));
+  revalidatePath("/settings/members");
 }
 
 export async function createProjectAction(formData: FormData): Promise<void> {

@@ -4,22 +4,29 @@ import Nav from "@/components/nav";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/session";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  if (!(await getSession())) redirect("/login");
+export type Org = { id: string; slug: string; name: string; role: string };
 
-  let org = "—";
-  let role = "—";
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  let orgs: Org[] = [];
   try {
-    const me = await api.whoami();
-    org = me.org_id?.slice(0, 8) ?? "—";
-    role = me.role ?? "—";
+    orgs = await api.myOrgs();
   } catch {
+    // Stale/invalid session token, or the API is unreachable → back to sign-in.
     redirect("/login");
   }
+  if (orgs.length === 0) redirect("/onboarding");
+
+  // Repair a stale current-org cookie (e.g. removed from that org) via the switch route —
+  // cookies can't be written during render, so redirect to the route handler that can.
+  const current = orgs.find((o) => o.id === session.currentOrg);
+  if (!current) redirect(`/auth/switch?org=${orgs[0].id}`);
 
   return (
     <div className="flex min-h-screen">
-      <Nav org={org} role={role} />
+      <Nav user={session.user} orgs={orgs} current={current} />
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto max-w-5xl p-8">{children}</div>
       </main>

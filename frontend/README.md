@@ -1,75 +1,80 @@
 # md-manager web (Next.js)
 
-The human web UI. A **BFF**: the browser never holds the API key — Next.js stores it in an
-httpOnly cookie and proxies to the Rust API server-side. (Logto OAuth login swaps in later;
-only the sign-in step changes.)
+The human web UI. A **BFF**: the browser never holds the backend token — Next.js keeps it in an
+httpOnly cookie and proxies to the Rust API server-side.
 
-Targets **Next.js 15** (App Router) + **React 19** + **Tailwind v4**. The code has been
-statically audited against the API contract (every page's fields match the Rust responses;
-Next 15 async `params`/`searchParams` are handled; all data pages are dynamic via `cookies()`
-so `next build` does **not** need the API running). It just needs `npm` to be reachable —
-which it wasn't in the authoring sandbox, so install/build must run on your machine.
+**Sign-in is "Sign in with Google"** (OAuth authorization-code flow, implemented directly in the
+BFF — no Auth.js dependency, no Docker, nothing extra to run). On first sign-in the backend
+creates the user + a personal organization automatically; you can then create more orgs, switch
+between them, and invite teammates by email. Targets Next.js 15 + React 19 + Tailwind v4.
 
-## Setup (exact steps)
+## 1. Create a Google OAuth client (one-time, ~5 min)
+
+[Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials →
+Create credentials → OAuth client ID**:
+
+- Application type: **Web application**
+- **Authorized redirect URIs**: add `http://localhost:3000/auth/callback`
+  (and your production `https://your-domain/auth/callback` later)
+- Create, then copy the **Client ID** and **Client secret**.
+
+(If prompted to configure the OAuth consent screen, set it to **External**, add your email as a
+test user, and the `email`/`profile`/`openid` scopes — all default.)
+
+## 2. Configure + run
 
 ```bash
-# ── Terminal 1: the Rust API (from the repo root) ──────────────────────────────
+# ── Terminal 1: the Rust API (repo root) ───────────────────────────────────────
 bash scripts/db-setup.sh                       # one-time: Postgres roles + dev DB
-MDM_ADMIN_BOOTSTRAP_TOKEN=dev-bootstrap-token \
-  cargo run -p mdm-api                          # listens on http://127.0.0.1:8080
+MDM_GOOGLE_CLIENT_ID=<your-client-id> \
+MDM_SESSION_SECRET=$(openssl rand -hex 32) \
+  cargo run -p mdm-api                          # http://127.0.0.1:8080
 
-# ── Terminal 2: the web app (from frontend/) ───────────────────────────────────
+# ── Terminal 2: the web app (frontend/) ────────────────────────────────────────
 cd frontend
-cp .env.local.example .env.local               # sets MDM_API_URL=http://127.0.0.1:8080
+cp .env.local.example .env.local               # then fill in the three values below
+#   MDM_API_URL=http://127.0.0.1:8080
+#   MDM_GOOGLE_CLIENT_ID=<same client id as the API>
+#   MDM_GOOGLE_CLIENT_SECRET=<your client secret>
 npm install                                    # if peer-dep errors: npm install --legacy-peer-deps
-npm run dev                                     # http://localhost:3000
+npm run dev                                    # http://localhost:3000
 ```
 
-Open http://localhost:3000 → you'll be redirected to `/login`. Get a key to paste:
+> The **Client ID must match** on both sides (the API verifies Google's token against it; the web
+> app starts the login with it). The **secret lives only on the Next.js server**. Use the **same**
+> `MDM_SESSION_SECRET` whenever you restart the API, or existing sessions are invalidated.
+
+Open http://localhost:3000 → **Sign in with Google**. You land in your auto-created org; create
+projects/docs, invite teammates (**Members**), and switch orgs from the sidebar dropdown.
+
+## 3. Verify headlessly (optional)
+
+`./smoke-test.sh` checks the API is up and the web `/login` renders the Google button. The full
+signed-in render can't be exercised by curl (login goes through Google), but if you export the
+API's `MDM_SESSION_SECRET` the script will mint a session cookie and verify the BFF renders org
+data too:
 
 ```bash
-# from the repo root, mint an admin key (prints `api_key.secret`: mk_…)
-cargo run -p mdm-cli -- bootstrap \
-  --email you@example.com --name You --org-slug acme --org-name Acme \
-  --token dev-bootstrap-token
+MDM_SESSION_SECRET=<same as the API> ./smoke-test.sh
 ```
-
-Paste the `mk_…` key on the login page. **Security:** the client supplies only the key; the
-API host comes from `MDM_API_URL` on the Next server, so a user can't point the BFF at an
-arbitrary host (no SSRF).
-
-## Verify headlessly (one command)
-
-With both servers up (use `npm run build && npm run start` for a production build, or just
-`npm run dev`), run the end-to-end smoke test — it bootstraps a tenant, seeds a project, mints
-the exact session cookie the app uses, and confirms the BFF renders API data:
-
-```bash
-./smoke-test.sh
-# or point it somewhere else:
-API_URL=http://127.0.0.1:8080 WEB_URL=http://localhost:3000 \
-  BOOTSTRAP_TOKEN=dev-bootstrap-token ./smoke-test.sh
-```
-
-> Note: `/login` is a React **server action**, not a plain form POST — you can't log in with a
-> raw `curl -X POST /login`. The smoke test instead mints the `mdm_session` cookie directly
-> (it's just `base64({"apiKey":"…"})`, exactly what `lib/session.ts` writes) and requests
-> `/projects` with it, which exercises the real server-side BFF→API path.
 
 ## What's here
 
 | Route | Purpose |
 |---|---|
-| `/login` | enter API key → httpOnly session cookie |
-| `/projects` | list + create projects |
-| `/projects/[slug]` | a project's documents + create |
-| `/documents/[id]` | markdown editor (edit/preview), **conflict-aware save**, version history + restore, delete |
-| `/search` | keyword full-text search |
-| `/settings/keys` | mint (shown once) / revoke API keys |
+| `/login` | "Sign in with Google" |
+| `/auth/google`, `/auth/callback` | OAuth start + callback (BFF); `/auth/switch` flips the active org |
+| `/onboarding` | create an organization |
+| `/projects`, `/projects/[slug]`, `/documents/[id]` | docs: list/create, editor (conflict-aware save), history/restore |
+| `/search` | keyword search |
+| `/settings/members` | invite teammates / revoke invites (owner/admin) |
+| `/settings/keys` | mint (shown once) / revoke API keys for the CLI + agents |
 
-- BFF plumbing: `lib/session.ts` (cookie), `lib/api.ts` (server-side API client), `lib/actions.ts` (server actions), `middleware.ts` (auth guard).
-- The editor (`components/editor.tsx`) sends `expected_version`; on a 409 it shows the current version and offers **Load current** or **Overwrite with mine** — surfacing the API's 3-way-merge data.
+- Auth plumbing: `lib/google-oauth.ts` (Google code flow), `lib/session.ts` (httpOnly cookie holds
+  the backend `mss_` session token + current org), `lib/api.ts` (server-side client; sends
+  `Authorization: Bearer` + `X-Org-Id`), `middleware.ts` (guard).
+- The editor sends `expected_version`; on a 409 it offers **Load current** / **Overwrite with mine**.
 
 ## Follow-ups
-- Swap the API-key login for the Logto OAuth BFF flow (see `../docs/oauth-logto.md`).
-- Upgrade the textarea editor to CodeMirror 6; add tags/categories UI, org/project switcher, share links.
+- Add GitHub (or other) social logins — same shape as Google.
+- CodeMirror 6 editor; tags/categories UI; `cmdk`; share-links UI; member-role management.
