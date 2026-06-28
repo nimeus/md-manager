@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { authUrl, publicOrigin } from "@/lib/google-oauth";
+import { safeNextPath } from "@/lib/safe-next";
 
 /**
  * Start "Sign in with Google": set a short-lived CSRF `state` cookie and redirect to Google's
@@ -11,9 +12,7 @@ export async function GET(req: NextRequest) {
   const origin = publicOrigin(req);
   try {
     // Optional post-login destination (e.g. the OAuth consent page). Same-origin paths only.
-    const nextParam = req.nextUrl.searchParams.get("next");
-    const safeNext =
-      nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
+    const safeNext = safeNextPath(req.nextUrl.searchParams.get("next"));
 
     const state = crypto.randomUUID();
     const jar = await cookies();

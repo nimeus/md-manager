@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import Logo from "@/components/logo";
+import { safeNextPath } from "@/lib/safe-next";
 
 const ERRORS: Record<string, string> = {
   not_configured: "Google sign-in isn't configured on the server yet.",
@@ -15,8 +16,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; next?: string }>;
 }) {
   const { error, next } = await searchParams;
-  // Only honor same-origin relative paths (open-redirect guard).
-  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+  const safeNext = safeNextPath(next); // same-origin relative paths only (open-redirect guard)
   const googleHref = safeNext
     ? `/auth/google?next=${encodeURIComponent(safeNext)}`
     : "/auth/google";

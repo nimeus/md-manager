@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { exchangeGoogleToken } from "@/lib/api";
 import { exchangeCodeForIdToken, publicOrigin } from "@/lib/google-oauth";
+import { safeNextPath } from "@/lib/safe-next";
 import { setSession } from "@/lib/session";
 
 /**
@@ -22,12 +23,9 @@ export async function GET(req: NextRequest) {
 
   const jar = await cookies();
   const expected = jar.get("g_state")?.value;
-  const nextRaw = jar.get("g_next")?.value;
+  const safeNext = safeNextPath(jar.get("g_next")?.value); // same-origin relative paths only
   jar.delete("g_state");
   jar.delete("g_next");
-  // Same-origin relative paths only (open-redirect guard).
-  const safeNext =
-    nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
 
   if (oauthErr) return fail(oauthErr);
   if (!code || !state || !expected || state !== expected) return fail("invalid_state");
