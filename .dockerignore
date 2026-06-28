@@ -1,0 +1,11 @@
+# Keep the API build context small + fast.
+target
+.git
+.github
+frontend/node_modules
+frontend/.next
+frontend/out
+**/.DS_Store
+*.log
+.env
+docs

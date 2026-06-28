@@ -1,0 +1,25 @@
+# md-manager API (Rust/Axum) — production image.
+# Build context: the repository root (the whole cargo workspace is needed to compile).
+# Migrations are embedded into the binary at compile time (sqlx::migrate!), so the runtime
+# image needs only the binary + CA certificates.
+
+# ---- build ----
+FROM rust:1-bookworm AS build
+WORKDIR /src
+# rust-toolchain.toml pins the compiler; rustup installs it on first build.
+COPY . .
+RUN cargo build --release -p mdm-api
+
+# ---- runtime ----
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 10001 -m mdm
+COPY --from=build /src/target/release/mdm-api /usr/local/bin/mdm-api
+USER mdm
+# Bind on all interfaces inside the container (override per deploy if needed).
+ENV MDM_API_ADDR=0.0.0.0:8080
+ENV MDM_LOG_FORMAT=json
+EXPOSE 8080
+CMD ["mdm-api"]
