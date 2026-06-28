@@ -8,6 +8,9 @@
 .env.*
 !.env.example
 *.pem
+# …but the throwaway RSA key used to sign JWTs in unit tests must be committed
+# (oauth.rs / google.rs include_str! it, so tests + clippy --all-targets need it).
+!apps/api/tests/fixtures/test_key.pem
 
 # Node / Next.js
 node_modules/
