@@ -3,7 +3,8 @@
 
 use mdm_core::model::{
     ActorType, ApiKeyInfo, Category, Document, DocumentSummary, DocumentVersion, OrgRole,
-    Organization, Project, SearchHit, Tag, Team, User, VersionKind, VersionSummary,
+    Organization, Project, SearchHit, ShareLinkInfo, SharedDocument, Tag, Team, User, VersionKind,
+    VersionSummary,
 };
 use mdm_core::{Error, Result};
 use sqlx::FromRow;
@@ -283,6 +284,58 @@ impl From<SearchRow> for SearchHit {
             heading_path: r.heading_path,
             snippet: r.snippet,
             rank: r.rank,
+        }
+    }
+}
+
+#[derive(FromRow)]
+pub struct ShareLinkInfoRow {
+    pub id: Uuid,
+    pub document_id: Uuid,
+    pub token_prefix: String,
+    pub created_at: OffsetDateTime,
+    pub expires_at: Option<OffsetDateTime>,
+    pub revoked_at: Option<OffsetDateTime>,
+}
+impl From<ShareLinkInfoRow> for ShareLinkInfo {
+    fn from(r: ShareLinkInfoRow) -> Self {
+        ShareLinkInfo {
+            id: r.id,
+            document_id: r.document_id,
+            token_prefix: r.token_prefix,
+            created_at: r.created_at,
+            expires_at: r.expires_at,
+            revoked_at: r.revoked_at,
+        }
+    }
+}
+
+/// Row used to resolve a presented share token (cross-org lookup by prefix).
+#[derive(FromRow)]
+pub struct ShareLinkAuthRow {
+    pub org_id: Uuid,
+    pub document_id: Uuid,
+    pub token_hash: String,
+    pub expires_at: Option<OffsetDateTime>,
+    pub revoked_at: Option<OffsetDateTime>,
+}
+
+#[derive(FromRow)]
+pub struct SharedDocRow {
+    pub document_id: Uuid,
+    pub path: String,
+    pub title: String,
+    pub content: String,
+    pub updated_at: OffsetDateTime,
+}
+impl From<SharedDocRow> for SharedDocument {
+    fn from(r: SharedDocRow) -> Self {
+        SharedDocument {
+            document_id: r.document_id,
+            path: r.path,
+            title: r.title,
+            content: r.content,
+            updated_at: r.updated_at,
         }
     }
 }

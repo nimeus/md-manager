@@ -358,6 +358,36 @@ async fn full_db_layer() {
     // cross-org: org B cannot create teams visible to A, nor grant on A's docs
     assert!(db.list_teams(&ctx_b).await.unwrap().is_empty());
 
+    // --- public share links --------------------------------------------------
+    let share = db
+        .create_share_link(&ctx_a, doc.id, Some(7))
+        .await
+        .expect("create share");
+    assert!(share.token.starts_with("sl_"));
+    // public resolve returns the document content (no auth context)
+    let shared = db.resolve_share_link(&share.token).await.expect("resolve");
+    assert_eq!(shared.document_id, doc.id);
+    assert!(!shared.content.is_empty());
+    assert_eq!(db.list_share_links(&ctx_a, doc.id).await.unwrap().len(), 1);
+    // a bogus token resolves to NotFound (no leak)
+    assert!(matches!(
+        db.resolve_share_link("sl_deadbeef00").await,
+        Err(mdm_core::Error::NotFound)
+    ));
+    // a viewer can't mint a share link (needs editor on the doc)
+    assert!(matches!(
+        db.create_share_link(&ctx_viewer, doc.id, None).await,
+        Err(mdm_core::Error::Forbidden)
+    ));
+    // revoke → the link stops resolving
+    db.revoke_share_link(&ctx_a, share.info.id)
+        .await
+        .expect("revoke");
+    assert!(matches!(
+        db.resolve_share_link(&share.token).await,
+        Err(mdm_core::Error::NotFound)
+    ));
+
     // --- per-project document quota (abuse guard) ----------------------------
     let qdb = connect_with_quota(2).await;
     let (_q_org, _q_user, q_key) = qdb

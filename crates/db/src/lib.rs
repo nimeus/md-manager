@@ -23,6 +23,7 @@ mod embedding;
 mod org;
 mod rows;
 mod search;
+mod share;
 mod tag;
 
 pub use document::UpdateOutcome;

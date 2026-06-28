@@ -96,6 +96,12 @@ pub struct SearchQuery {
 }
 
 #[derive(Deserialize)]
+pub struct CreateShareReq {
+    #[serde(default)]
+    pub expires_in_days: Option<i64>,
+}
+
+#[derive(Deserialize)]
 pub struct CreateCategoryReq {
     #[serde(default)]
     pub parent_id: Option<Uuid>,

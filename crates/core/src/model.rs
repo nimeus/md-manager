@@ -293,6 +293,39 @@ pub struct ApiKeyCreated {
     pub secret: String,
 }
 
+/// Public info about a share link (never includes the token or its hash).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareLinkInfo {
+    pub id: Uuid,
+    pub document_id: Uuid,
+    pub token_prefix: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub expires_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub revoked_at: Option<OffsetDateTime>,
+}
+
+/// Returned once when a share link is created; `token` is shown only here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareLinkCreated {
+    #[serde(flatten)]
+    pub info: ShareLinkInfo,
+    pub token: String,
+}
+
+/// The read-only document view returned when resolving a (public) share link.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SharedDocument {
+    pub document_id: Uuid,
+    pub path: String,
+    pub title: String,
+    pub content: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+}
+
 /// A full-text search hit, aggregated to the document level.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHit {

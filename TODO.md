@@ -50,6 +50,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] **Teams + per-project/per-doc grants + full RBAC lattice** (deny-veto, most-permissive, owner override, viewer-ceiling) — migration 0004, `mdm_core::rbac::resolve_doc_role`, per-doc authorization, db/REST/CLI (`mdm team`/`mdm grant`); verified live (member deny, owner override, team-deny-vetoes-grant)
 - [x] Rate limits (per-user, `governor`) + per-project document quota — config-driven, verified live (429s) + quota integration test
 - [x] Hide per-doc-denied docs from list/search results (not just on access)
+- [x] **Public share links** (migration 0005) — read-only, expiring, revocable; HMAC+pepper token (shown once); db/REST/CLI (`mdm share`); PUBLIC `GET /v1/shared/{token}` (no auth); verified live incl. public fetch + revoke→404 + integration test
 
 ## Phase 2 — Web connectors (resource server ✅; Logto go-live external)
 - [x] Streamable HTTP `/mcp` transport (served by the API) — 15 tools, verified via curl

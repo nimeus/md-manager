@@ -32,33 +32,56 @@ pub struct GeneratedKey {
     pub prefix: String,
 }
 
-/// Generate a new API key: `mk_<64 hex chars>` from 32 CSPRNG bytes.
-pub fn generate_api_key() -> GeneratedKey {
+/// Generate a scheme-prefixed token: `<scheme>_<64 hex chars>` from 32 CSPRNG bytes.
+/// The lookup prefix is `<scheme>_` + the first 8 hex chars.
+pub fn generate_token(scheme: &str) -> GeneratedKey {
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
-    let secret = format!("mk_{}", hex::encode(bytes));
-    let prefix = secret[..11].to_string(); // "mk_" + 8 hex chars
+    let secret = format!("{scheme}_{}", hex::encode(bytes));
+    let prefix = secret[..scheme.len() + 1 + 8].to_string();
     GeneratedKey { secret, prefix }
 }
 
-/// The lookup prefix for a presented key (first 11 chars), if it looks well-formed.
-pub fn key_prefix(secret: &str) -> Option<String> {
-    if secret.starts_with("mk_") && secret.len() >= 11 {
-        Some(secret[..11].to_string())
+/// The lookup prefix for a presented token, if it matches `<scheme>_…`.
+pub fn token_prefix(scheme: &str, secret: &str) -> Option<String> {
+    let head = scheme.len() + 1; // "scheme_"
+    if secret.starts_with(&format!("{scheme}_")) && secret.len() >= head + 8 {
+        Some(secret[..head + 8].to_string())
     } else {
         None
     }
 }
 
-/// Hash an API key for storage (HMAC-SHA256 with the server pepper).
-pub fn hash_api_key(pepper: &str, secret: &str) -> String {
+/// Hash a token for storage (HMAC-SHA256 with the server pepper).
+pub fn hash_token(pepper: &str, secret: &str) -> String {
     hmac_hex(pepper.as_bytes(), secret.as_bytes())
 }
 
 /// Constant-time check that `secret` hashes to `stored_hash` under `pepper`.
+pub fn verify_token(pepper: &str, secret: &str, stored_hash: &str) -> bool {
+    hash_token(pepper, secret)
+        .as_bytes()
+        .ct_eq(stored_hash.as_bytes())
+        .into()
+}
+
+// --- API keys (scheme "mk") ---
+pub fn generate_api_key() -> GeneratedKey {
+    generate_token("mk")
+}
+pub fn key_prefix(secret: &str) -> Option<String> {
+    token_prefix("mk", secret)
+}
+pub fn hash_api_key(pepper: &str, secret: &str) -> String {
+    hash_token(pepper, secret)
+}
 pub fn verify_api_key(pepper: &str, secret: &str, stored_hash: &str) -> bool {
-    let computed = hash_api_key(pepper, secret);
-    computed.as_bytes().ct_eq(stored_hash.as_bytes()).into()
+    verify_token(pepper, secret, stored_hash)
+}
+
+/// Generate a share-link token (scheme "sl").
+pub fn generate_share_token() -> GeneratedKey {
+    generate_token("sl")
 }
 
 #[cfg(test)]

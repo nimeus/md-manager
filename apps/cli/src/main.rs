@@ -81,6 +81,11 @@ enum Cmd {
         #[command(subcommand)]
         cmd: GrantCmd,
     },
+    /// Public share links
+    Share {
+        #[command(subcommand)]
+        cmd: ShareCmd,
+    },
     /// API keys
     Keys {
         #[command(subcommand)]
@@ -315,6 +320,22 @@ enum KeysCmd {
     Revoke {
         id: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ShareCmd {
+    /// Mint a public read-only link for a document (token shown once)
+    Create {
+        doc_id: String,
+        #[arg(long)]
+        expires_days: Option<i64>,
+    },
+    /// List a document's share links
+    List { doc_id: String },
+    /// Revoke a share link
+    Revoke { link_id: String },
+    /// Open a shared document by token (prints raw markdown)
+    Open { token: String },
 }
 
 #[tokio::main]
@@ -619,6 +640,29 @@ async fn run(cli: Cli) -> Result<()> {
                 KeysCmd::Revoke { id } => {
                     c.revoke_api_key(id).await?;
                     println!("revoked {id}");
+                }
+            }
+        }
+
+        Cmd::Share { cmd } => {
+            let c = client(&cli)?;
+            match cmd {
+                ShareCmd::Create {
+                    doc_id,
+                    expires_days,
+                } => print_json(&c.create_share(doc_id, *expires_days).await?),
+                ShareCmd::List { doc_id } => print_json(&c.list_shares(doc_id).await?),
+                ShareCmd::Revoke { link_id } => {
+                    c.revoke_share(link_id).await?;
+                    println!("revoked {link_id}");
+                }
+                ShareCmd::Open { token } => {
+                    let v = c.get_shared(token).await?;
+                    if cli.json {
+                        print_json(&v);
+                    } else {
+                        print!("{}", v["content"].as_str().unwrap_or_default());
+                    }
                 }
             }
         }

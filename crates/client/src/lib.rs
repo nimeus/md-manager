@@ -392,6 +392,40 @@ impl Client {
             .await
     }
 
+    // --- share links -----------------------------------------------------
+
+    pub async fn create_share(&self, doc_id: &str, expires_in_days: Option<i64>) -> R<Value> {
+        let mut body = json!({});
+        if let Some(d) = expires_in_days {
+            body["expires_in_days"] = json!(d);
+        }
+        self.run(
+            self.http
+                .post(self.url(&format!("/v1/documents/{doc_id}/shares")))
+                .json(&body),
+        )
+        .await
+    }
+
+    pub async fn list_shares(&self, doc_id: &str) -> R<Value> {
+        self.run(
+            self.http
+                .get(self.url(&format!("/v1/documents/{doc_id}/shares"))),
+        )
+        .await
+    }
+
+    pub async fn revoke_share(&self, link_id: &str) -> R<Value> {
+        self.run(self.http.delete(self.url(&format!("/v1/shares/{link_id}"))))
+            .await
+    }
+
+    /// Resolve a public share token (the API endpoint ignores auth).
+    pub async fn get_shared(&self, token: &str) -> R<Value> {
+        self.run(self.http.get(self.url(&format!("/v1/shared/{token}"))))
+            .await
+    }
+
     // --- bootstrap (unauthenticated; uses the bootstrap token) -----------
 
     pub async fn bootstrap(

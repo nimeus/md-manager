@@ -364,6 +364,45 @@ pub async fn grant_document(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// --- share links -----------------------------------------------------------
+
+pub async fn create_share(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CreateShareReq>,
+) -> ApiResult<Response> {
+    let link =
+        s.db.create_share_link(&ctx, id, req.expires_in_days)
+            .await?;
+    Ok((StatusCode::CREATED, Json(link)).into_response())
+}
+
+pub async fn list_shares(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_share_links(&ctx, id).await?)))
+}
+
+pub async fn revoke_share(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    s.db.revoke_share_link(&ctx, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// PUBLIC — no auth. The token is the authorization; invalid/expired/revoked → 404.
+pub async fn get_shared(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.resolve_share_link(&token).await?)))
+}
+
 // --- search ----------------------------------------------------------------
 
 pub async fn search(
