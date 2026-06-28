@@ -2,11 +2,19 @@ import Link from "next/link";
 
 import KeyCreator from "@/components/key-creator";
 import PageHeader from "@/components/page-header";
-import { revokeKeyAction } from "@/lib/actions";
+import {
+  revokeKeyAction,
+  revokeOAuthGrantAction,
+  switchOAuthGrantAction,
+} from "@/lib/actions";
 import { api } from "@/lib/api";
 
 export default async function KeysPage() {
-  const keys: any[] = await api.listKeys();
+  const [keys, grants, orgs]: [any[], any[], any[]] = await Promise.all([
+    api.listKeys(),
+    api.listOAuthGrants().catch(() => []),
+    api.myOrgs().catch(() => []),
+  ]);
 
   return (
     <div>
@@ -51,6 +59,77 @@ export default async function KeysPage() {
           </div>
         ))}
       </div>
+
+      <ConnectedApps grants={grants} orgs={orgs} />
     </div>
+  );
+}
+
+function ConnectedApps({ grants, orgs }: { grants: any[]; orgs: any[] }) {
+  return (
+    <>
+      <h2 className="mt-8 mb-1 text-sm font-medium text-ink-soft">Connected apps</h2>
+      <p className="mb-2 text-xs text-ink-soft">
+        Assistants (Claude, ChatGPT) connected via OAuth. Switch which organization a connection
+        uses — no reconnect needed — or revoke it.
+      </p>
+      <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">
+        {grants.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-ink-soft">
+            No connected apps yet. Add md-manager as a connector in Claude or ChatGPT —{" "}
+            <Link href="/docs/connectors" className="link-accent">
+              see the docs
+            </Link>
+            .
+          </p>
+        )}
+        {grants.map((g) => (
+          <div
+            key={g.client_id + g.org_id}
+            className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{g.client_name}</div>
+              <div className="text-xs text-ink-soft">
+                org: <span className="text-ink-2">{g.org_name}</span>
+                {g.last_used_at
+                  ? ` · last used ${new Date(g.last_used_at).toLocaleDateString()}`
+                  : ""}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {orgs.length > 1 && (
+                <form action={switchOAuthGrantAction} className="flex items-center gap-1.5">
+                  <input type="hidden" name="client_id" value={g.client_id} />
+                  <input type="hidden" name="from_org_id" value={g.org_id} />
+                  <select
+                    name="to_org_id"
+                    defaultValue={g.org_id}
+                    aria-label="Switch organization"
+                    className="input !w-auto !py-1 !text-xs"
+                  >
+                    {orgs.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="btn-ghost btn-sm" type="submit">
+                    Switch
+                  </button>
+                </form>
+              )}
+              <form action={revokeOAuthGrantAction}>
+                <input type="hidden" name="client_id" value={g.client_id} />
+                <input type="hidden" name="org_id" value={g.org_id} />
+                <button className="text-xs text-red-600 hover:underline" type="submit">
+                  Revoke
+                </button>
+              </form>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

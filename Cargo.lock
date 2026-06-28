@@ -1202,6 +1202,7 @@ dependencies = [
  "anyhow",
  "mdm-config",
  "mdm-core",
+ "serde",
  "serde_json",
  "serial_test",
  "sqlx",

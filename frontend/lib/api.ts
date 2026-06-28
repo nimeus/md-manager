@@ -130,6 +130,16 @@ export const api = {
     req(`/v1/oauth/authorization-requests/${id}/approve`, json({ org_id: orgId })),
   denyOAuthConsent: (id: string) =>
     req(`/v1/oauth/authorization-requests/${id}/deny`, { method: "POST" }),
+
+  // Connected apps (manage connector grants)
+  listOAuthGrants: () => req("/v1/oauth/grants"),
+  revokeOAuthGrant: (clientId: string, orgId: string) =>
+    req(`/v1/oauth/grants/${encodeURIComponent(clientId)}/revoke`, json({ org_id: orgId })),
+  switchOAuthGrant: (clientId: string, fromOrgId: string, toOrgId: string) =>
+    req(
+      `/v1/oauth/grants/${encodeURIComponent(clientId)}/switch`,
+      json({ from_org_id: fromOrgId, to_org_id: toOrgId }),
+    ),
 };
 
 /** Result of exchanging a Google ID token for a backend session (used only during login). */

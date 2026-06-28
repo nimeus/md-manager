@@ -101,3 +101,22 @@ export async function revokeKeyAction(formData: FormData): Promise<void> {
   await api.revokeKey(String(formData.get("id") ?? ""));
   revalidatePath("/settings/keys");
 }
+
+// --- connected apps (OAuth connector grants) ---------------------------------
+
+export async function revokeOAuthGrantAction(formData: FormData): Promise<void> {
+  const clientId = String(formData.get("client_id") ?? "");
+  const orgId = String(formData.get("org_id") ?? "");
+  if (clientId && orgId) await api.revokeOAuthGrant(clientId, orgId);
+  revalidatePath("/settings/keys");
+}
+
+export async function switchOAuthGrantAction(formData: FormData): Promise<void> {
+  const clientId = String(formData.get("client_id") ?? "");
+  const fromOrgId = String(formData.get("from_org_id") ?? "");
+  const toOrgId = String(formData.get("to_org_id") ?? "");
+  if (clientId && fromOrgId && toOrgId && fromOrgId !== toOrgId) {
+    await api.switchOAuthGrant(clientId, fromOrgId, toOrgId);
+  }
+  revalidatePath("/settings/keys");
+}

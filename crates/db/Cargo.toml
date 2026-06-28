@@ -10,6 +10,7 @@ description = "SQLx repository implementations, migrations, and the TenantDb RLS
 mdm-core.workspace = true
 uuid.workspace = true
 time.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sqlx = { version = "0.8", default-features = false, features = [
     "postgres",

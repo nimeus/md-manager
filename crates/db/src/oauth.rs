@@ -11,10 +11,11 @@
 use mdm_core::model::{ActorType, AuthContext, OrgRole};
 use mdm_core::{Error, Result, crypto, ids, oauth as core_oauth};
 use sqlx::{FromRow, Postgres, Transaction};
+use serde::Serialize;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::{Db, map_db};
+use crate::{Db, audit, map_db};
 
 /// A freshly registered client; `client_secret` is `None` for public (PKCE-only) clients.
 #[derive(Debug, Clone)]
@@ -65,6 +66,19 @@ pub struct IssuedTokens {
     pub access_expires_in: i64,
     pub scope: String,
     pub resource: String,
+}
+
+/// A user's connected app (one connector grant in one org) for the "Connected apps" panel.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct OAuthGrant {
+    pub client_name: String,
+    pub client_id: String,
+    pub org_id: Uuid,
+    pub org_name: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub connected_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub last_used_at: Option<OffsetDateTime>,
 }
 
 #[derive(FromRow)]
@@ -324,9 +338,7 @@ impl Db {
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_db)?;
-        if role.is_none() {
-            return Err(Error::Forbidden);
-        }
+        let role = OrgRole::from_db(&role.ok_or(Error::Forbidden)?)?;
 
         let code = core_oauth::generate_auth_code();
         let code_hash = crypto::hash_token(&self.pepper, &code.secret);
@@ -350,6 +362,21 @@ impl Db {
         .bind(&req.scope)
         .bind(expires_at)
         .execute(&mut *tx)
+        .await
+        .map_err(map_db)?;
+
+        audit(
+            &mut tx,
+            &AuthContext {
+                org_id,
+                user_id,
+                actor_type: ActorType::User,
+                org_role: role,
+            },
+            "oauth.grant",
+            Some(&req.client_id.to_string()),
+            serde_json::json!({ "scope": req.scope }),
+        )
         .await
         .map_err(map_db)?;
 
@@ -647,6 +674,147 @@ impl Db {
             .map_err(map_db)?
             .rows_affected();
         Ok(a + b)
+    }
+
+    // ── Connected apps (user-facing grant management) ───────────────────────────────────
+
+    /// List the user's active connector grants across all their orgs (one row per connected
+    /// app + org), newest first. Powers the "Connected apps" panel.
+    pub async fn list_oauth_grants(&self, ctx: &AuthContext) -> Result<Vec<OAuthGrant>> {
+        // Scope by user so the `organizations` join is readable (org_member_read policy).
+        let mut tx = self.begin_user_scoped(ctx.user_id).await.map_err(map_db)?;
+        let rows = sqlx::query_as::<_, OAuthGrant>(
+            "SELECT c.name AS client_name, c.client_id, o.id AS org_id, o.name AS org_name,
+                    max(r.created_at) AS connected_at,
+                    (SELECT max(a.last_used_at) FROM oauth_access_tokens a
+                       WHERE a.client_id = c.id AND a.user_id = $1 AND a.org_id = o.id
+                         AND a.revoked_at IS NULL) AS last_used_at
+             FROM oauth_refresh_tokens r
+             JOIN oauth_clients c ON c.id = r.client_id
+             JOIN organizations o ON o.id = r.org_id
+             WHERE r.user_id = $1 AND r.revoked_at IS NULL AND r.rotated_to IS NULL
+                   AND r.expires_at > now()
+             GROUP BY c.id, c.name, c.client_id, o.id, o.name
+             ORDER BY connected_at DESC",
+        )
+        .bind(ctx.user_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(map_db)?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(rows)
+    }
+
+    /// Revoke a connected app's grant in one org (kills the whole token family there).
+    pub async fn revoke_oauth_grant(
+        &self,
+        ctx: &AuthContext,
+        client_id: &str,
+        org_id: Uuid,
+    ) -> Result<()> {
+        let client_db_id = self.grant_client_db_id(client_id, ctx.user_id, org_id).await?;
+        let mut tx = self
+            .begin_scoped(org_id, ctx.user_id, ActorType::User)
+            .await
+            .map_err(map_db)?;
+        revoke_family(&mut tx, client_db_id, ctx.user_id, org_id).await?;
+        audit(
+            &mut tx,
+            &AuthContext {
+                org_id,
+                user_id: ctx.user_id,
+                actor_type: ActorType::User,
+                org_role: ctx.org_role,
+            },
+            "oauth.revoke",
+            Some(client_id),
+            serde_json::json!({}),
+        )
+        .await
+        .map_err(map_db)?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(())
+    }
+
+    /// Move a live connection from `from_org` to `to_org` (which the user must belong to). The
+    /// token strings are unchanged — the connector keeps working, now acting in the new org.
+    pub async fn switch_oauth_grant(
+        &self,
+        ctx: &AuthContext,
+        client_id: &str,
+        from_org: Uuid,
+        to_org: Uuid,
+    ) -> Result<()> {
+        if from_org == to_org {
+            return Ok(());
+        }
+        let client_db_id = self.grant_client_db_id(client_id, ctx.user_id, from_org).await?;
+        // The caller must currently be a member of the target org (RLS scope = to_org).
+        let mut tx = self
+            .begin_scoped(to_org, ctx.user_id, ActorType::User)
+            .await
+            .map_err(map_db)?;
+        let role: Option<String> = sqlx::query_scalar(
+            "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2",
+        )
+        .bind(to_org)
+        .bind(ctx.user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_db)?;
+        let role = OrgRole::from_db(&role.ok_or(Error::Forbidden)?)?;
+
+        // Re-bind the live token family. Table names are fixed literals (injection-safe).
+        for table in ["oauth_access_tokens", "oauth_refresh_tokens"] {
+            sqlx::query(&format!(
+                "UPDATE {table} SET org_id = $1
+                 WHERE client_id = $2 AND user_id = $3 AND org_id = $4 AND revoked_at IS NULL"
+            ))
+            .bind(to_org)
+            .bind(client_db_id)
+            .bind(ctx.user_id)
+            .bind(from_org)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_db)?;
+        }
+        audit(
+            &mut tx,
+            &AuthContext {
+                org_id: to_org,
+                user_id: ctx.user_id,
+                actor_type: ActorType::User,
+                org_role: role,
+            },
+            "oauth.switch",
+            Some(client_id),
+            serde_json::json!({ "from_org": from_org.to_string(), "to_org": to_org.to_string() }),
+        )
+        .await
+        .map_err(map_db)?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(())
+    }
+
+    /// Resolve a public `client_id` to its db id, ensuring the user has a grant in `org_id`.
+    async fn grant_client_db_id(
+        &self,
+        client_id: &str,
+        user_id: Uuid,
+        org_id: Uuid,
+    ) -> Result<Uuid> {
+        sqlx::query_scalar(
+            "SELECT c.id FROM oauth_clients c WHERE c.client_id = $1 AND EXISTS (
+               SELECT 1 FROM oauth_refresh_tokens r
+               WHERE r.client_id = c.id AND r.user_id = $2 AND r.org_id = $3 AND r.revoked_at IS NULL)",
+        )
+        .bind(client_id)
+        .bind(user_id)
+        .bind(org_id)
+        .fetch_optional(self.pool())
+        .await
+        .map_err(map_db)?
+        .ok_or(Error::NotFound)
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────

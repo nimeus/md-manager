@@ -163,3 +163,16 @@ pub struct GrantReq {
     pub subject_id: Uuid,
     pub role: String,
 }
+
+/// Revoke a connector grant in a specific org.
+#[derive(Deserialize)]
+pub struct RevokeGrantReq {
+    pub org_id: Uuid,
+}
+
+/// Move a connector grant from one org to another.
+#[derive(Deserialize)]
+pub struct SwitchGrantReq {
+    pub from_org_id: Uuid,
+    pub to_org_id: Uuid,
+}
