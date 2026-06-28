@@ -5,7 +5,7 @@
 //!
 //! Run: `cargo test -p mdm-db`
 
-use mdm_core::model::{ActorType, OrgRole, VersionKind};
+use mdm_core::model::{ActorType, OrgRole, Role, VersionKind};
 use mdm_db::{Db, UpdateOutcome};
 use sqlx::postgres::PgPoolOptions;
 
@@ -178,4 +178,42 @@ async fn full_db_layer() {
         db.categorize_document(&ctx_b, doc.id, child.id).await,
         Err(mdm_core::Error::NotFound)
     ));
+
+    // --- RBAC lattice: per-doc deny + team grants + owner override -----------
+    // A 'member' key shares the admin's user id but is clamped to member role, so it
+    // exercises the deny path (which org owner/admin override).
+    let member_key = db.create_api_key(&ctx_a, "member-bot", OrgRole::Member).await.expect("member key");
+    let ctx_member = db.authenticate_api_key(&member_key.secret).await.expect("auth member");
+    assert_eq!(ctx_member.org_role, OrgRole::Member);
+
+    // baseline: a member can read + write
+    assert!(db.get_document(&ctx_member, doc.id).await.is_ok());
+    assert!(db.append_to_document(&ctx_member, doc.id, "by member\n").await.is_ok());
+
+    // explicit per-doc deny locks the member out (read + write)
+    db.grant_document(&ctx_a, doc.id, "user", ctx_member.user_id, Role::None).await.expect("deny");
+    assert!(matches!(db.get_document(&ctx_member, doc.id).await, Err(mdm_core::Error::Forbidden)));
+    assert!(matches!(
+        db.update_document(&ctx_member, doc.id, "x", 99, VersionKind::Checkpoint).await,
+        Err(mdm_core::Error::Forbidden)
+    ));
+    // owner/admin override the deny
+    assert!(db.get_document(&ctx_a, doc.id).await.is_ok());
+
+    // a positive user grant does NOT beat an explicit deny on the same doc...
+    db.grant_document(&ctx_a, doc.id, "user", ctx_member.user_id, Role::Editor).await.expect("regrant editor");
+    assert!(db.get_document(&ctx_member, doc.id).await.is_ok()); // deny replaced by editor → allowed again
+
+    // ...but a team-level deny vetoes even a positive user grant.
+    let team = db.create_team(&ctx_a, "secret", "Secret").await.expect("team");
+    db.add_team_member(&ctx_a, team.id, ctx_member.user_id).await.expect("add team member");
+    db.grant_document(&ctx_a, doc.id, "team", team.id, Role::None).await.expect("team deny");
+    assert!(
+        matches!(db.get_document(&ctx_member, doc.id).await, Err(mdm_core::Error::Forbidden)),
+        "team deny must veto the positive user grant"
+    );
+    assert!(db.get_document(&ctx_a, doc.id).await.is_ok(), "admin still overrides team deny");
+
+    // cross-org: org B cannot create teams visible to A, nor grant on A's docs
+    assert!(db.list_teams(&ctx_b).await.unwrap().is_empty());
 }

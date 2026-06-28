@@ -67,6 +67,16 @@ enum Cmd {
         #[command(subcommand)]
         cmd: CatCmd,
     },
+    /// Teams
+    Team {
+        #[command(subcommand)]
+        cmd: TeamCmd,
+    },
+    /// Grants (project/document access)
+    Grant {
+        #[command(subcommand)]
+        cmd: GrantCmd,
+    },
     /// API keys
     Keys {
         #[command(subcommand)]
@@ -244,6 +254,43 @@ enum CatCmd {
     Add { doc_id: String, category_id: String },
     /// List documents in a category
     Docs { category_id: String },
+}
+
+#[derive(Subcommand)]
+enum TeamCmd {
+    List,
+    Create {
+        #[arg(long)]
+        slug: String,
+        #[arg(long)]
+        name: String,
+    },
+    /// Add an org member to a team
+    AddMember { team_id: String, user_id: String },
+}
+
+#[derive(Subcommand)]
+enum GrantCmd {
+    /// Grant a user/team a role on a project (role: viewer|commenter|editor|admin)
+    Project {
+        project_id: String,
+        #[arg(long, value_parser = ["user", "team"])]
+        subject: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        role: String,
+    },
+    /// Grant (role: …) or DENY (role: none) a user/team on a document
+    Doc {
+        doc_id: String,
+        #[arg(long, value_parser = ["user", "team"])]
+        subject: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        role: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -474,6 +521,32 @@ async fn run(cli: Cli) -> Result<()> {
                 }
                 CatCmd::Docs { category_id } => {
                     print_json(&c.list_category_documents(category_id).await?)
+                }
+            }
+        }
+
+        Cmd::Team { cmd } => {
+            let c = client(&cli)?;
+            match cmd {
+                TeamCmd::List => print_json(&c.list_teams().await?),
+                TeamCmd::Create { slug, name } => print_json(&c.create_team(slug, name).await?),
+                TeamCmd::AddMember { team_id, user_id } => {
+                    c.add_team_member(team_id, user_id).await?;
+                    println!("added {user_id} to team {team_id}");
+                }
+            }
+        }
+
+        Cmd::Grant { cmd } => {
+            let c = client(&cli)?;
+            match cmd {
+                GrantCmd::Project { project_id, subject, id, role } => {
+                    c.grant_project(project_id, subject, id, role).await?;
+                    println!("granted {subject}:{id} {role} on project {project_id}");
+                }
+                GrantCmd::Doc { doc_id, subject, id, role } => {
+                    c.grant_document(doc_id, subject, id, role).await?;
+                    println!("granted {subject}:{id} {role} on document {doc_id}");
                 }
             }
         }

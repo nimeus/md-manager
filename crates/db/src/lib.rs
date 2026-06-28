@@ -14,6 +14,7 @@ use mdm_core::{AuthContext, model::ActorType};
 use sqlx::{Postgres, Transaction, postgres::PgPoolOptions};
 use uuid::Uuid;
 
+mod access;
 mod apikey;
 mod auth;
 mod category;

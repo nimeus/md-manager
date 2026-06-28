@@ -265,6 +265,53 @@ pub async fn categorize_document(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// --- teams + grants --------------------------------------------------------
+
+pub async fn list_teams(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_teams(&ctx).await?)))
+}
+
+pub async fn create_team(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Json(req): Json<CreateTeamReq>,
+) -> ApiResult<Response> {
+    let team = s.db.create_team(&ctx, &req.slug, &req.name).await?;
+    Ok((StatusCode::CREATED, Json(team)).into_response())
+}
+
+pub async fn add_team_member(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(team_id): Path<Uuid>,
+    Json(req): Json<AddTeamMemberReq>,
+) -> ApiResult<StatusCode> {
+    s.db.add_team_member(&ctx, team_id, req.user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn grant_project(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(project_id): Path<Uuid>,
+    Json(req): Json<GrantReq>,
+) -> ApiResult<StatusCode> {
+    let role = mdm_core::Role::from_db(&req.role)?;
+    s.db.grant_project(&ctx, project_id, &req.subject_type, req.subject_id, role).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn grant_document(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(doc_id): Path<Uuid>,
+    Json(req): Json<GrantReq>,
+) -> ApiResult<StatusCode> {
+    let role = mdm_core::Role::from_db(&req.role)?;
+    s.db.grant_document(&ctx, doc_id, &req.subject_type, req.subject_id, role).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // --- search ----------------------------------------------------------------
 
 pub async fn search(

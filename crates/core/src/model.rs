@@ -73,6 +73,29 @@ pub enum Role {
     Admin,
 }
 
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::None => "none",
+            Role::Viewer => "viewer",
+            Role::Commenter => "commenter",
+            Role::Editor => "editor",
+            Role::Admin => "admin",
+        }
+    }
+
+    pub fn from_db(s: &str) -> Result<Self, Error> {
+        match s {
+            "none" => Ok(Role::None),
+            "viewer" => Ok(Role::Viewer),
+            "commenter" => Ok(Role::Commenter),
+            "editor" => Ok(Role::Editor),
+            "admin" => Ok(Role::Admin),
+            other => Err(Error::invalid(format!("unknown role: {other}"))),
+        }
+    }
+}
+
 /// Whether the actor behind a request is a human user or an agent (API key / connector).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -220,6 +243,16 @@ pub struct VersionSummary {
 pub struct Tag {
     pub id: Uuid,
     pub name: String,
+}
+
+/// A team within an org — a named group of members that grants can target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Team {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
 }
 
 /// An org-scoped, hierarchical category (crosses projects). `parent_id` is `None` at the root.

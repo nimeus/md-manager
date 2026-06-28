@@ -34,6 +34,7 @@ All business rules live in `db`'s service (used by `api`) — `cli`/`mcp` go thr
 2. **Tenant isolation = Postgres RLS.** App connects as `md_app` (non-owner, `NOBYPASSRLS`). Tenant tables have `org_id` + `FORCE ROW LEVEL SECURITY` keyed on `current_org_id()`. All tenant access goes through `Db::begin_ctx`/`begin_scoped` (sets `app.current_org_id` GUC, `is_local`). Unset GUC ⇒ zero rows. `users` + `api_keys` are intentionally RLS-exempt (global identity / cross-org key lookup) — scope them by explicit `org_id` filter in code.
 3. **Docs = immutable UUID + mutable path** (unique per project). UUID is canonical.
 4. **Concurrency = optimistic.** `update_document` needs `expected_version`; stale ⇒ `UpdateOutcome::Conflict { current_version, current_content, base_content }` (HTTP 409). `append` is FOR-UPDATE serialised. No CRDT yet.
+4b. **Doc authorization = the RBAC lattice.** Document ops authorize against `Db::effective_doc_role` (org base + project/team/per-doc grants), resolved by `mdm_core::rbac::resolve_doc_role`: per-doc deny (`role='none'`) vetoes unless org owner/admin; positive grants accumulate most-permissive; org viewer is a hard ceiling. `users`/`api_keys` stay RLS-exempt; grant tables are RLS-scoped. (List/search still filter at org level — per-doc deny is enforced on access, not yet hidden from listings.)
 5. **Versioning = full snapshots** with `version_kind` (checkpoint vs autosave) + ~30s autosave coalesce. Max doc size capped.
 6. **Secrets** via `mdm_config::Secret`; never log. API keys/share tokens hashed HMAC-SHA256 + server pepper, constant-time compare. Keys shown once.
 7. **CLI and MCP tool surfaces stay symmetric.**
@@ -76,5 +77,5 @@ CLI/MCP: `MDM_API_URL`, `MDM_API_KEY`, `MDM_BOOTSTRAP_TOKEN`. CLI also reads `~/
 
 ## Notes / known follow-ups
 - MCP is a hand-rolled stdio JSON-RPC server (robust, spec-compliant). Phase 2 adds Streamable HTTP + OAuth; could adopt `rmcp` then.
-- Categories (org-scoped, hierarchical, cross-project) shipped across db/REST/CLI/MCP (migration 0003). Teams + per-project/per-doc grants + the full RBAC lattice are still pending (resolver uses org role). Rate limiting deferred. CI workflow not yet added.
+- Categories (migration 0003) and Teams + per-project/per-doc grants + the full RBAC lattice (migration 0004) are shipped across db/REST/CLI (grants not in MCP — agents don't manage ACLs). Rate limiting deferred; per-doc-deny not yet hidden from list/search; CI workflow not yet added.
 - When a decision changes, update docs/PLAN.md + this file in the same change.

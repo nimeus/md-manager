@@ -67,6 +67,10 @@ fn router(state: AppState) -> Router {
             get(handlers::list_categories).post(handlers::create_category),
         )
         .route("/v1/categories/{id}/documents", get(handlers::list_category_documents))
+        .route("/v1/teams", get(handlers::list_teams).post(handlers::create_team))
+        .route("/v1/teams/{id}/members", post(handlers::add_team_member))
+        .route("/v1/projects/{id}/grants", post(handlers::grant_project))
+        .route("/v1/documents/{id}/grants", post(handlers::grant_document))
         .route("/v1/search", get(handlers::search))
         .route(
             "/v1/api-keys",

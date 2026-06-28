@@ -6,7 +6,7 @@
 //! [`effective_role`] changes — the `require_*` helpers stay the same.
 
 use crate::error::{Error, Result};
-use crate::model::{AuthContext, Role};
+use crate::model::{AuthContext, OrgRole, Role};
 
 /// Combine positive grants by most-permissive (lattice `max`).
 pub fn most_permissive(grants: &[Role]) -> Role {
@@ -39,6 +39,34 @@ pub fn require_write(ctx: &AuthContext) -> Result<()> {
 /// Manage the org: projects, members, API keys.
 pub fn require_admin(ctx: &AuthContext) -> Result<()> {
     require(effective_role(ctx), Role::Admin)
+}
+
+/// Inputs for resolving a caller's effective role on a specific document, layering
+/// project/team/per-doc grants on top of the org base role.
+pub struct DocAccess {
+    pub org_role: OrgRole,
+    /// Positive grant roles (from project + doc grants) applicable to the user or a team
+    /// they belong to.
+    pub grant_roles: Vec<Role>,
+    /// True if any applicable per-doc grant is an explicit deny (role `none`).
+    pub denied: bool,
+}
+
+/// Resolve the effective document role (see `docs/PLAN.md` §3):
+/// 1. an explicit per-doc deny vetoes — unless the caller is org owner/admin;
+/// 2. otherwise take the most-permissive of the org base capability and all positive grants;
+/// 3. an org `viewer` is a hard ceiling.
+pub fn resolve_doc_role(access: &DocAccess) -> Role {
+    let privileged = matches!(access.org_role, OrgRole::Owner | OrgRole::Admin);
+    if access.denied && !privileged {
+        return Role::None;
+    }
+    let base = access.org_role.capability();
+    let mut effective = access.grant_roles.iter().copied().fold(base, Role::max);
+    if matches!(access.org_role, OrgRole::Viewer) && effective > Role::Viewer {
+        effective = Role::Viewer;
+    }
+    effective
 }
 
 #[cfg(test)]
@@ -79,5 +107,42 @@ mod tests {
     fn admin_and_owner_can_admin() {
         assert!(require_admin(&ctx(OrgRole::Admin)).is_ok());
         assert!(require_admin(&ctx(OrgRole::Owner)).is_ok());
+    }
+
+    fn access(org_role: OrgRole, grant_roles: Vec<Role>, denied: bool) -> DocAccess {
+        DocAccess { org_role, grant_roles, denied }
+    }
+
+    #[test]
+    fn member_base_is_editor() {
+        assert_eq!(resolve_doc_role(&access(OrgRole::Member, vec![], false)), Role::Editor);
+    }
+
+    #[test]
+    fn per_doc_deny_locks_out_a_member() {
+        assert_eq!(resolve_doc_role(&access(OrgRole::Member, vec![], true)), Role::None);
+    }
+
+    #[test]
+    fn owner_and_admin_override_deny() {
+        assert_eq!(resolve_doc_role(&access(OrgRole::Owner, vec![], true)), Role::Admin);
+        assert_eq!(resolve_doc_role(&access(OrgRole::Admin, vec![], true)), Role::Admin);
+    }
+
+    #[test]
+    fn grants_elevate_most_permissive() {
+        assert_eq!(
+            resolve_doc_role(&access(OrgRole::Member, vec![Role::Admin], false)),
+            Role::Admin
+        );
+    }
+
+    #[test]
+    fn org_viewer_is_a_hard_ceiling() {
+        // even a grant of editor cannot lift an org viewer above viewer
+        assert_eq!(
+            resolve_doc_role(&access(OrgRole::Viewer, vec![Role::Editor], false)),
+            Role::Viewer
+        );
     }
 }

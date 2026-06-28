@@ -105,3 +105,23 @@ pub struct CreateCategoryReq {
 pub struct CategorizeReq {
     pub category_id: Uuid,
 }
+
+#[derive(Deserialize)]
+pub struct CreateTeamReq {
+    pub slug: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct AddTeamMemberReq {
+    pub user_id: Uuid,
+}
+
+/// A project/document grant. `subject_type` is "user" or "team"; for document grants
+/// `role` may be "none" (an explicit deny).
+#[derive(Deserialize)]
+pub struct GrantReq {
+    pub subject_type: String,
+    pub subject_id: Uuid,
+    pub role: String,
+}

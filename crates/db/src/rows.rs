@@ -3,7 +3,7 @@
 
 use mdm_core::model::{
     ActorType, ApiKeyInfo, Category, Document, DocumentSummary, DocumentVersion, Organization,
-    OrgRole, Project, SearchHit, Tag, User, VersionKind, VersionSummary,
+    OrgRole, Project, SearchHit, Tag, Team, User, VersionKind, VersionSummary,
 };
 use mdm_core::{Error, Result};
 use sqlx::FromRow;
@@ -180,6 +180,24 @@ impl From<TagRow> for Tag {
         Tag {
             id: r.id,
             name: r.name,
+        }
+    }
+}
+
+#[derive(FromRow)]
+pub struct TeamRow {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub created_at: OffsetDateTime,
+}
+impl From<TeamRow> for Team {
+    fn from(r: TeamRow) -> Self {
+        Team {
+            id: r.id,
+            slug: r.slug,
+            name: r.name,
+            created_at: r.created_at,
         }
     }
 }

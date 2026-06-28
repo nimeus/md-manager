@@ -47,8 +47,9 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] Integration tests vs Postgres: tenant isolation, concurrency, RBAC, search, key revoke
 - [x] End-to-end verified: CLI + MCP agent loops, cross-surface consistency
 - [x] **Categories** (org-scoped, hierarchical, cross-project) + document_categories — migration 0003, db, REST, CLI (`mdm cat`), MCP (18 tools total), integration tests
+- [x] **Teams + per-project/per-doc grants + full RBAC lattice** (deny-veto, most-permissive, owner override, viewer-ceiling) — migration 0004, `mdm_core::rbac::resolve_doc_role`, per-doc authorization, db/REST/CLI (`mdm team`/`mdm grant`); verified live (member deny, owner override, team-deny-vetoes-grant)
 - [ ] Rate limits / quotas (`tower-governor`, max docs/project)   ← deferred polish
-- [ ] Teams + per-project/per-doc grants + full RBAC lattice (deny-veto / viewer-ceiling) — resolver still org-role only
+- [ ] Hide per-doc-denied docs from list/search results (currently enforced on access, not listing)
 
 ## Phase 2 — Web connectors (resource server ✅; Logto go-live external)
 - [x] Streamable HTTP `/mcp` transport (served by the API) — 15 tools, verified via curl

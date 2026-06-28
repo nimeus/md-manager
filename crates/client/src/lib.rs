@@ -276,6 +276,44 @@ impl Client {
             .await
     }
 
+    // --- teams + grants --------------------------------------------------
+
+    pub async fn list_teams(&self) -> R<Value> {
+        self.run(self.http.get(self.url("/v1/teams"))).await
+    }
+
+    pub async fn create_team(&self, slug: &str, name: &str) -> R<Value> {
+        self.run(self.http.post(self.url("/v1/teams")).json(&json!({ "slug": slug, "name": name })))
+            .await
+    }
+
+    pub async fn add_team_member(&self, team_id: &str, user_id: &str) -> R<Value> {
+        self.run(
+            self.http
+                .post(self.url(&format!("/v1/teams/{team_id}/members")))
+                .json(&json!({ "user_id": user_id })),
+        )
+        .await
+    }
+
+    pub async fn grant_project(&self, project_id: &str, subject_type: &str, subject_id: &str, role: &str) -> R<Value> {
+        self.run(
+            self.http
+                .post(self.url(&format!("/v1/projects/{project_id}/grants")))
+                .json(&json!({ "subject_type": subject_type, "subject_id": subject_id, "role": role })),
+        )
+        .await
+    }
+
+    pub async fn grant_document(&self, doc_id: &str, subject_type: &str, subject_id: &str, role: &str) -> R<Value> {
+        self.run(
+            self.http
+                .post(self.url(&format!("/v1/documents/{doc_id}/grants")))
+                .json(&json!({ "subject_type": subject_type, "subject_id": subject_id, "role": role })),
+        )
+        .await
+    }
+
     pub async fn search(&self, query: &str, project_id: Option<&str>, limit: Option<i64>) -> R<Value> {
         let mut q: Vec<(String, String)> = vec![("q".into(), query.to_string())];
         if let Some(p) = project_id {

@@ -2,7 +2,7 @@
 //! atomic append, restore, move, soft delete/undelete, and history.
 
 use mdm_core::model::{
-    AuthContext, Document, DocumentSummary, DocumentVersion, VersionKind, VersionSummary,
+    AuthContext, Document, DocumentSummary, DocumentVersion, Role, VersionKind, VersionSummary,
 };
 use mdm_core::{Error, Result, crypto, ids, rbac, validate};
 use serde_json::json;
@@ -35,7 +35,6 @@ impl Db {
         title: &str,
         content: &str,
     ) -> Result<Document> {
-        rbac::require_write(ctx)?;
         validate::validate_path(path)?;
         validate::validate_title(title)?;
         validate::validate_content_size(content, self.max_doc_bytes)?;
@@ -44,6 +43,7 @@ impl Db {
         if !self.project_exists(&mut tx, project_id).await? {
             return Err(Error::invalid("project not found in this organization"));
         }
+        self.authorize_project(&mut tx, ctx, project_id, Role::Editor).await?;
 
         let doc_id = ids::new_id();
         let hash = crypto::content_hash(content);
@@ -77,7 +77,6 @@ impl Db {
     }
 
     pub async fn get_document(&self, ctx: &AuthContext, doc_id: Uuid) -> Result<Document> {
-        rbac::require_read(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let row = sqlx::query_as::<_, crate::rows::DocumentRow>(&format!(
             "SELECT {DOC_COLS} FROM documents WHERE id = $1 AND deleted_at IS NULL"
@@ -86,8 +85,12 @@ impl Db {
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_db)?;
+        let Some(row) = row else {
+            return Err(Error::NotFound);
+        };
+        self.authorize_doc(&mut tx, ctx, doc_id, row.project_id, Role::Viewer).await?;
         tx.commit().await.map_err(map_db)?;
-        row.map(Into::into).ok_or(Error::NotFound)
+        Ok(row.into())
     }
 
     pub async fn get_document_by_path(
@@ -96,7 +99,6 @@ impl Db {
         project_id: Uuid,
         path: &str,
     ) -> Result<Document> {
-        rbac::require_read(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let row = sqlx::query_as::<_, crate::rows::DocumentRow>(&format!(
             "SELECT {DOC_COLS} FROM documents
@@ -107,8 +109,12 @@ impl Db {
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_db)?;
+        let Some(row) = row else {
+            return Err(Error::NotFound);
+        };
+        self.authorize_doc(&mut tx, ctx, row.id, row.project_id, Role::Viewer).await?;
         tx.commit().await.map_err(map_db)?;
-        row.map(Into::into).ok_or(Error::NotFound)
+        Ok(row.into())
     }
 
     pub async fn list_documents(
@@ -144,11 +150,11 @@ impl Db {
         expected_version: i64,
         kind: VersionKind,
     ) -> Result<UpdateOutcome> {
-        rbac::require_write(ctx)?;
         validate::validate_content_size(content, self.max_doc_bytes)?;
 
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
 
         if cur.current_version != expected_version {
             let base: Option<String> = sqlx::query_scalar(
@@ -208,9 +214,9 @@ impl Db {
         doc_id: Uuid,
         addition: &str,
     ) -> Result<Document> {
-        rbac::require_write(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
 
         let mut new_content = cur.content.clone();
         if !new_content.is_empty() && !new_content.ends_with('\n') {
@@ -250,9 +256,10 @@ impl Db {
         doc_id: Uuid,
         new_path: &str,
     ) -> Result<Document> {
-        rbac::require_write(ctx)?;
         validate::validate_path(new_path)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
+        let cur = self.lock_document(&mut tx, doc_id).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
         let doc = sqlx::query_as::<_, crate::rows::DocumentRow>(&format!(
             "UPDATE documents SET path = $1, updated_by = $2, updated_at = now()
              WHERE id = $3 AND deleted_at IS NULL RETURNING {DOC_COLS}"
@@ -272,19 +279,14 @@ impl Db {
     }
 
     pub async fn delete_document(&self, ctx: &AuthContext, doc_id: Uuid) -> Result<()> {
-        rbac::require_write(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
-        let affected = sqlx::query(
-            "UPDATE documents SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
-        )
-        .bind(doc_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_db)?
-        .rows_affected();
-        if affected == 0 {
-            return Err(Error::NotFound);
-        }
+        let cur = self.lock_document(&mut tx, doc_id).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
+        sqlx::query("UPDATE documents SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
+            .bind(doc_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_db)?;
         // Drop chunks so a deleted doc no longer appears in search.
         sqlx::query("DELETE FROM doc_chunks WHERE document_id = $1")
             .bind(doc_id)
@@ -299,8 +301,16 @@ impl Db {
     }
 
     pub async fn undelete_document(&self, ctx: &AuthContext, doc_id: Uuid) -> Result<Document> {
-        rbac::require_write(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
+        let project_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT project_id FROM documents WHERE id = $1 AND deleted_at IS NOT NULL",
+        )
+        .bind(doc_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_db)?;
+        let project_id = project_id.ok_or(Error::NotFound)?;
+        self.authorize_doc(&mut tx, ctx, doc_id, project_id, Role::Editor).await?;
         let doc: Document = sqlx::query_as::<_, crate::rows::DocumentRow>(&format!(
             "UPDATE documents SET deleted_at = NULL, updated_at = now()
              WHERE id = $1 AND deleted_at IS NOT NULL RETURNING {DOC_COLS}"
@@ -326,9 +336,9 @@ impl Db {
         doc_id: Uuid,
         version: i64,
     ) -> Result<Document> {
-        rbac::require_write(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let cur = self.lock_document(&mut tx, doc_id).await?;
+        self.authorize_doc(&mut tx, ctx, doc_id, cur.project_id, Role::Editor).await?;
         let snapshot: String = sqlx::query_scalar(
             "SELECT content FROM document_versions WHERE document_id = $1 AND version = $2",
         )
@@ -370,8 +380,8 @@ impl Db {
         ctx: &AuthContext,
         doc_id: Uuid,
     ) -> Result<Vec<VersionSummary>> {
-        rbac::require_read(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
+        self.authorize_doc_read(&mut tx, ctx, doc_id).await?;
         let rows = sqlx::query_as::<_, crate::rows::VersionSummaryRow>(
             "SELECT version, version_kind, actor_type, actor_id, content_hash, created_at
              FROM document_versions WHERE document_id = $1 ORDER BY version DESC",
@@ -390,8 +400,8 @@ impl Db {
         doc_id: Uuid,
         version: i64,
     ) -> Result<DocumentVersion> {
-        rbac::require_read(ctx)?;
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
+        self.authorize_doc_read(&mut tx, ctx, doc_id).await?;
         let row = sqlx::query_as::<_, crate::rows::VersionRow>(
             "SELECT id, document_id, version, content, content_hash, version_kind,
                     actor_type, actor_id, created_at
@@ -421,6 +431,24 @@ impl Db {
         .await
         .map_err(map_db)?;
         row.map(Into::into).ok_or(Error::NotFound)
+    }
+
+    /// Authorize at least viewer access on a (non-deleted) document by id.
+    async fn authorize_doc_read(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        ctx: &AuthContext,
+        doc_id: Uuid,
+    ) -> Result<()> {
+        let project_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT project_id FROM documents WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(doc_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(map_db)?;
+        let project_id = project_id.ok_or(Error::NotFound)?;
+        self.authorize_doc(tx, ctx, doc_id, project_id, Role::Viewer).await
     }
 
     #[allow(clippy::too_many_arguments)]
