@@ -4,17 +4,18 @@
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 **Current status (2026-06-28):** ✅ Phase 1 MVP + ✅ Phase 2 resource server (remote MCP over HTTP +
-OAuth 2.1 token validation) complete & verified. Agents reach md-manager via API, `mdm` CLI, MCP
-stdio, **and MCP over HTTP** (with an API key today; with Logto-issued OAuth JWTs once Logto is run).
+OAuth 2.1 token validation) + ✅ **Phase 3 web app BUILT & verified** (user ran `npm run build` +
+`./smoke-test.sh` clean on their Mac, 2026-06-28). The full product is live: Rust agent backend
+(API + `mdm` CLI + MCP stdio + MCP over HTTP, 20 tools) **and** the Next.js web UI, both over one
+RLS/RBAC-enforced Postgres. Backend re-verified end-to-end against the running server (health, auth/401,
+docs CRUD, 409+merge, FTS, MCP get_doc).
 
-**Local dev:** Postgres 17 via Homebrew (no Docker). `bash scripts/db-setup.sh`, then `cargo run -p mdm-api`.
+**Local dev:** Postgres 17 via Homebrew (no Docker). `bash scripts/db-setup.sh`, then `cargo run -p mdm-api`;
+web app: `cd frontend && cp .env.local.example .env.local && npm install && npm run dev` (see [frontend/README.md](frontend/README.md)).
 
 **Remaining for web connectors (external):** run self-hosted Logto + expose over public HTTPS, then
-the live Claude.ai/ChatGPT connector spike. See [docs/oauth-logto.md](docs/oauth-logto.md).
-
-**Phase 3 web app (`frontend/`):** code complete (Next.js 15 BFF). ⚠️ NOT built in this environment —
-the npm registry was unreachable (cargo/crates.io works; npm doesn't). Run `npm install && npm run build`
-on a machine with npm access; see [frontend/README.md](frontend/README.md).
+the live Claude.ai/ChatGPT connector spike. See [docs/oauth-logto.md](docs/oauth-logto.md). (Until Logto
+is configured, `/.well-known/oauth-protected-resource` correctly returns 404 — nothing to advertise.)
 
 ---
 
@@ -76,7 +77,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] Version history + restore; document delete; search page; API-keys (mint shown-once / revoke)
 - [x] Static audit vs API contract: every page's fields match the Rust responses (whoami/projects/docs/history/search/keys), Next 15 async `params`/`searchParams` handled, all data pages dynamic via `cookies()` so `next build` needs no live API — no code fixes required
 - [x] First-run kit: `.env.local.example`, `.gitignore`, corrected README (the old `curl POST /login` verify was wrong — login is a server action), and `frontend/smoke-test.sh` (bootstraps + seeds + mints the real session cookie + checks the BFF renders API data); API-side of the smoke test validated live
-- [ ] **Run `npm install && npm run build && npm run start` then `./smoke-test.sh`** — only step left; needs a machine with npm registry access (unreachable in this sandbox)
+- [x] **Built & verified**: user ran `npm install && npm run build && npm run start` + `./smoke-test.sh` clean on their Mac (2026-06-28) — the app compiles and the BFF→API path renders live data. (npm was unreachable in the authoring sandbox; built on the user's machine.)
 - [ ] Swap API-key login → Logto OAuth BFF flow
 - [ ] CodeMirror 6 editor; tags/categories UI; org/project switcher; `cmdk`; share links
 
