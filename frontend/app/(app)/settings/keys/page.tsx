@@ -1,4 +1,5 @@
 import KeyCreator from "@/components/key-creator";
+import PageHeader from "@/components/page-header";
 import { revokeKeyAction } from "@/lib/actions";
 import { api } from "@/lib/api";
 
@@ -7,19 +8,21 @@ export default async function KeysPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold">API keys</h1>
-      <p className="mt-1 text-sm text-ink-soft">
-        Keys authenticate the CLI and AI agents (MCP). A key is clamped to its creator&apos;s role.
-      </p>
+      <PageHeader
+        eyebrow="Settings"
+        title="API keys"
+        description="Keys authenticate the CLI and AI agents (MCP). Each key is clamped to its creator’s role and shown only once."
+      />
 
-      <div className="mt-5">
-        <KeyCreator />
-      </div>
+      <KeyCreator />
 
-      <div className="mt-6 divide-y divide-line overflow-hidden rounded-lg border border-line">
-        {keys.length === 0 && <p className="p-4 text-sm text-ink-soft">No keys yet.</p>}
+      <h2 className="mt-8 mb-2 text-sm font-medium text-ink-soft">Keys</h2>
+      <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">
+        {keys.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-ink-soft">No keys yet.</p>
+        )}
         {keys.map((k) => (
-          <div key={k.id} className="flex items-center justify-between p-3">
+          <div key={k.id} className="flex items-center justify-between px-4 py-3">
             <div>
               <div className="text-sm font-medium">
                 {k.name}{" "}

@@ -1,4 +1,5 @@
 import InviteForm from "@/components/invite-form";
+import PageHeader from "@/components/page-header";
 import { revokeInviteAction } from "@/lib/actions";
 import { api } from "@/lib/api";
 
@@ -14,11 +15,11 @@ export default async function MembersPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold">Members</h1>
-      <p className="mt-1 text-sm text-ink-soft">
-        Invite teammates to this organization. They join automatically when they sign in with
-        Google using the invited email address.
-      </p>
+      <PageHeader
+        eyebrow="Settings"
+        title="Members"
+        description="Invite teammates to this organization. They join automatically when they sign in with Google using the invited email."
+      />
 
       {!canManage ? (
         <p className="card mt-5 text-sm text-ink-soft">
