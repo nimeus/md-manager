@@ -14,14 +14,15 @@ only the sign-in step changes.)
 # 1) start the Rust API (from the repo root) — see ../CLAUDE.md
 cargo run -p mdm-api            # http://127.0.0.1:8080
 
-# 2) the web app
+# 2) the web app — the upstream API host is fixed server-side (MDM_API_URL)
 cd frontend
 npm install
-npm run dev                     # http://localhost:3000
+MDM_API_URL=http://127.0.0.1:8080 npm run dev    # http://localhost:3000
 ```
 
-Sign in with an API key (`mk_…`) from `mdm bootstrap` / the API-keys page. The default API URL
-on the login screen is `http://127.0.0.1:8080`.
+Sign in with an API key (`mk_…`) from `mdm bootstrap` / the API-keys page. **Security:** the
+client supplies only the key; the API host comes from `MDM_API_URL` on the Next server, so a
+user can't make the BFF fetch arbitrary hosts (no SSRF). Defaults to `http://127.0.0.1:8080`.
 
 ## Verify (headless, without a browser)
 
@@ -30,8 +31,7 @@ npm run build                   # type-checks + compiles every route
 npm run start &                 # serve the production build
 
 # login route sets the httpOnly cookie, then SSR pages render with data:
-curl -s -c /tmp/jar -X POST http://localhost:3000/login \
-  --data-urlencode "apiUrl=http://127.0.0.1:8080" --data-urlencode "apiKey=mk_…"
+curl -s -c /tmp/jar -X POST http://localhost:3000/login --data-urlencode "apiKey=mk_…"
 curl -s -b /tmp/jar http://localhost:3000/projects | grep -o "Projects"
 ```
 

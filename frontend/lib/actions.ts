@@ -9,16 +9,16 @@ import { clearSession, setSession } from "./session";
 export type FormState = { error?: string } | null;
 
 export async function loginAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const apiUrl = (String(formData.get("apiUrl") ?? "").trim()) || "http://127.0.0.1:8080";
   const apiKey = String(formData.get("apiKey") ?? "").trim();
   if (!apiKey) return { error: "An API key is required." };
 
-  await setSession({ apiUrl, apiKey });
+  // The API host is fixed server-side (MDM_API_URL); clients only supply the key.
+  await setSession({ apiKey });
   try {
     await api.whoami();
   } catch {
     await clearSession();
-    return { error: "Could not authenticate — check the API URL and key." };
+    return { error: "Could not authenticate — check the key (and that the server can reach the API)." };
   }
   redirect("/projects");
 }

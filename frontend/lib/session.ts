@@ -2,12 +2,13 @@ import { cookies } from "next/headers";
 
 const COOKIE = "mdm_session";
 
-export type Session = { apiUrl: string; apiKey: string };
+export type Session = { apiKey: string };
 
 /**
- * The session holds the API base URL + key server-side only, in an httpOnly cookie.
- * The browser never sees the key (BFF pattern). When Logto OAuth lands, only the login
- * step changes — this storage shape stays.
+ * The session holds only the API key, server-side, in an httpOnly cookie. The browser
+ * never sees it (BFF pattern). The upstream API host is fixed by the server (env
+ * `MDM_API_URL`) — clients cannot choose it, which prevents SSRF. When Logto OAuth lands,
+ * only the login step changes.
  */
 export async function getSession(): Promise<Session | null> {
   const raw = (await cookies()).get(COOKIE)?.value;

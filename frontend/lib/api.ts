@@ -1,5 +1,11 @@
 import { getSession } from "./session";
 
+/**
+ * Upstream API base URL — fixed by the server operator (NOT client-supplied), so a user
+ * cannot make the BFF fetch an arbitrary host (SSRF). Configure per deployment.
+ */
+const API_BASE = (process.env.MDM_API_URL ?? "http://127.0.0.1:8080").replace(/\/+$/, "");
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -23,7 +29,7 @@ async function raw(
   };
   if (init?.body) headers["content-type"] = "application/json";
 
-  const res = await fetch(`${session.apiUrl}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
     cache: "no-store",

@@ -17,18 +17,6 @@ export default function LoginPage() {
         </p>
         <form action={action} className="mt-5 space-y-4">
           <div>
-            <label className="label" htmlFor="apiUrl">
-              API URL
-            </label>
-            <input
-              id="apiUrl"
-              name="apiUrl"
-              className="input"
-              defaultValue="http://127.0.0.1:8080"
-              autoComplete="off"
-            />
-          </div>
-          <div>
             <label className="label" htmlFor="apiKey">
               API key
             </label>
