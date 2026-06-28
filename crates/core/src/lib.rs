@@ -14,6 +14,7 @@ pub mod ids;
 pub mod mcp;
 pub mod merge;
 pub mod model;
+pub mod oauth;
 pub mod rbac;
 pub mod validate;
 

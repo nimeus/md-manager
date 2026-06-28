@@ -14,7 +14,10 @@ export function middleware(request: NextRequest) {
     pathname === "/" ||
     pathname === "/login" ||
     pathname.startsWith("/docs") ||
-    pathname.startsWith("/auth/");
+    pathname.startsWith("/auth/") ||
+    // The OAuth consent page self-guards (it redirects to /login?next=… when signed out),
+    // so it must not be force-redirected here — that would drop the request_id.
+    pathname.startsWith("/oauth/");
 
   if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));

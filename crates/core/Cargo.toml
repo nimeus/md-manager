@@ -13,10 +13,11 @@ serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
 
-# Crypto + content hashing (API keys, share tokens, content_hash)
+# Crypto + content hashing (API keys, share tokens, content_hash, PKCE S256)
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
+base64 = "0.22"
 subtle = "2"
 rand = "0.9"
 

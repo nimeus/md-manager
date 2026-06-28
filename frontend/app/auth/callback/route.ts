@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { exchangeGoogleToken } from "@/lib/api";
 import { exchangeCodeForIdToken, publicOrigin } from "@/lib/google-oauth";
+import { safeNextPath } from "@/lib/safe-next";
 import { setSession } from "@/lib/session";
 
 /**
@@ -22,7 +23,9 @@ export async function GET(req: NextRequest) {
 
   const jar = await cookies();
   const expected = jar.get("g_state")?.value;
+  const safeNext = safeNextPath(jar.get("g_next")?.value); // same-origin relative paths only
   jar.delete("g_state");
+  jar.delete("g_next");
 
   if (oauthErr) return fail(oauthErr);
   if (!code || !state || !expected || state !== expected) return fail("invalid_state");
@@ -35,7 +38,7 @@ export async function GET(req: NextRequest) {
       user: ex.user,
       currentOrg: ex.orgs[0]?.id ?? "",
     });
-    return NextResponse.redirect(new URL("/projects", origin));
+    return NextResponse.redirect(new URL(safeNext ?? "/projects", origin));
   } catch {
     return fail("signin_failed");
   }

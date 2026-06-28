@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import CodeBlock from "@/components/code-block";
-import { Code, H1, H2, Lead, Note, P } from "@/components/doc-ui";
+import { Code, H1, H2, Lead, P } from "@/components/doc-ui";
 import { apiBase } from "@/lib/docs";
 
 export const metadata = { title: "Connectors — md-manager" };
@@ -10,40 +10,48 @@ export default function ConnectorsDocs() {
   const API = apiBase();
   return (
     <>
-      <H1>Hosted assistants</H1>
+      <H1>Use md-manager in Claude &amp; ChatGPT</H1>
       <Lead>
-        Want Claude or another assistant to use md-manager? The most reliable way today is to
-        connect it as an MCP server with an API key — that works with Claude Desktop, Claude Code,
-        Cursor, and anything that speaks MCP.
+        Add md-manager as a <strong>custom connector</strong> and sign in with Google. Your
+        assistant gets the same 20 tools — scoped to one organization, acting with your
+        permissions. No API key to copy or paste.
       </Lead>
 
-      <H2 id="how">How to connect</H2>
+      <H2 id="claude">Claude (claude.ai &amp; desktop app)</H2>
       <P>
-        See <Link href="/docs/mcp" className="link-accent">MCP</Link> for copy-paste setup. In
-        short, point your client at this server with a key from{" "}
-        <Link href="/settings/keys" className="link-accent">Settings → API Keys</Link>:
+        Open <strong>Settings → Connectors → Add custom connector</strong>, name it (e.g.
+        “md-manager”), and paste this URL:
       </P>
       <div className="mt-4">
-        <CodeBlock filename="MCP endpoint" code={`${API}/mcp     (Authorization: Bearer mk_live_…)`} />
+        <CodeBlock filename="Connector URL" code={`${API}/mcp`} />
       </div>
+      <P>
+        Claude opens a sign-in window: <strong>Continue with Google</strong>, choose which
+        organization the connector may access, and click <strong>Allow</strong>. The tools show
+        up right after — try “search md-manager for the deploy runbook.”
+      </P>
 
-      <H2 id="raw">Call it directly</H2>
-      <P>Any tool that can make an HTTP request can use it — it&apos;s plain JSON-RPC:</P>
-      <div className="mt-4">
-        <CodeBlock
-          filename="terminal"
-          code={`curl -s ${API}/mcp \\
-  -H "authorization: Bearer mk_live_…" \\
-  -H "content-type: application/json" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`}
-        />
-      </div>
+      <H2 id="chatgpt">ChatGPT</H2>
+      <P>
+        Same idea — add a custom connector pointing at <Code>{`${API}/mcp`}</Code> and complete
+        the Google sign-in. (Custom connectors require a paid ChatGPT plan.)
+      </P>
 
-      <Note>
-        Native one-click connectors inside <strong>Claude.ai</strong> and <strong>ChatGPT</strong>{" "}
-        use a hosted sign-in (OAuth) flow that isn&apos;t enabled on this instance yet. Until it
-        is, connect through Claude Desktop or Claude Code as above — same tools, same documents.
-      </Note>
+      <H2 id="how">What happens when you connect</H2>
+      <P>
+        md-manager is its own OAuth 2.1 provider — there&apos;s nothing extra to run. The
+        connector registers itself, you sign in with Google and pick an org, and md-manager
+        issues a <strong>revocable</strong> token bound to that organization. The connector can
+        only ever do what your role there allows, and you can revoke it any time from{" "}
+        <Link href="/settings/keys" className="link-accent">Settings → API Keys</Link>.
+      </P>
+
+      <H2 id="key">Prefer a key? (Claude Desktop config)</H2>
+      <P>
+        You can also wire it up with an API key instead of signing in — handy for scripted or
+        headless setups. See <Link href="/docs/mcp" className="link-accent">MCP</Link> for the{" "}
+        <Code>mcp-remote</Code> config. Both paths reach the exact same tools and rules.
+      </P>
     </>
   );
 }

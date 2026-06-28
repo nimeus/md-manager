@@ -2,6 +2,13 @@
 
 > Source-of-truth plan. Keep in sync with [TODO.md](../TODO.md) and [CLAUDE.md](../CLAUDE.md).
 > Approved 2026-06-27.
+>
+> **Update (built-in OAuth connector):** the OAuth 2.1 authorization server for native
+> Claude.ai / ChatGPT connectors is now **built into the app** (`MDM_OAUTH_MODE=builtin`,
+> migration `0009_oauth_server`) — self-hosted **Logto is no longer required**. Opaque, revocable
+> `mo_` tokens on the API-key HMAC path; consent on the web app's `/oauth/consent`. See
+> [oauth-builtin.md](oauth-builtin.md). §5 below documents the original Logto design, still
+> supported as `MDM_OAUTH_MODE=logto`.
 
 ## Context
 

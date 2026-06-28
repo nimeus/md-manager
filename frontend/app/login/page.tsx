@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import Logo from "@/components/logo";
+import { safeNextPath } from "@/lib/safe-next";
 
 const ERRORS: Record<string, string> = {
   not_configured: "Google sign-in isn't configured on the server yet.",
@@ -12,9 +13,13 @@ const ERRORS: Record<string, string> = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
+  const safeNext = safeNextPath(next); // same-origin relative paths only (open-redirect guard)
+  const googleHref = safeNext
+    ? `/auth/google?next=${encodeURIComponent(safeNext)}`
+    : "/auth/google";
   return (
     <div className="paper-texture flex min-h-screen flex-col items-center justify-center px-6">
       <Link href="/" className="mb-8 transition hover:opacity-80">
@@ -24,7 +29,9 @@ export default async function LoginPage({
       <div className="card w-full max-w-sm">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Welcome back</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-          Sign in to your markdown workspace — shared by your team and your AI agents.
+          {safeNext
+            ? "Sign in to authorize the connection to your workspace."
+            : "Sign in to your markdown workspace — shared by your team and your AI agents."}
         </p>
 
         {error && (
@@ -35,7 +42,7 @@ export default async function LoginPage({
 
         {/* A plain link triggers the server-side OAuth redirect (no client JS needed). */}
         <a
-          href="/auth/google"
+          href={googleHref}
           className="btn-ghost mt-6 w-full justify-center gap-3 py-2.5 text-[15px]"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
