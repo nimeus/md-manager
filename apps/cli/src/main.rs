@@ -86,11 +86,25 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ShareCmd,
     },
+    /// Audit log (admin)
+    Audit(AuditArgs),
     /// API keys
     Keys {
         #[command(subcommand)]
         cmd: KeysCmd,
     },
+}
+
+#[derive(Args)]
+struct AuditArgs {
+    /// Filter by target (e.g. a document id)
+    #[arg(long)]
+    target: Option<String>,
+    /// Filter by action prefix (e.g. doc. or share.)
+    #[arg(long)]
+    action: Option<String>,
+    #[arg(long)]
+    limit: Option<i64>,
 }
 
 #[derive(Args)]
@@ -630,6 +644,14 @@ async fn run(cli: Cli) -> Result<()> {
                     println!("granted {subject}:{id} {role} on document {doc_id}");
                 }
             }
+        }
+
+        Cmd::Audit(a) => {
+            let c = client(&cli)?;
+            print_json(
+                &c.list_audit(a.target.as_deref(), a.action.as_deref(), a.limit)
+                    .await?,
+            );
         }
 
         Cmd::Keys { cmd } => {

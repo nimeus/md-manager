@@ -2,9 +2,9 @@
 //! Enum columns are stored as text and converted here.
 
 use mdm_core::model::{
-    ActorType, ApiKeyInfo, Category, Document, DocumentSummary, DocumentVersion, OrgRole,
-    Organization, Project, SearchHit, ShareLinkInfo, SharedDocument, Tag, Team, User, VersionKind,
-    VersionSummary,
+    ActorType, ApiKeyInfo, AuditEntry, Category, Document, DocumentSummary, DocumentVersion,
+    OrgRole, Organization, Project, SearchHit, ShareLinkInfo, SharedDocument, Tag, Team, User,
+    VersionKind, VersionSummary,
 };
 use mdm_core::{Error, Result};
 use sqlx::FromRow;
@@ -337,6 +337,30 @@ impl From<SharedDocRow> for SharedDocument {
             content: r.content,
             updated_at: r.updated_at,
         }
+    }
+}
+
+#[derive(FromRow)]
+pub struct AuditRow {
+    pub id: Uuid,
+    pub actor_type: String,
+    pub actor_id: Uuid,
+    pub action: String,
+    pub target: Option<String>,
+    pub metadata: String,
+    pub created_at: OffsetDateTime,
+}
+impl AuditRow {
+    pub fn into_core(self) -> Result<AuditEntry> {
+        Ok(AuditEntry {
+            id: self.id,
+            actor_type: ActorType::from_db(&self.actor_type)?,
+            actor_id: self.actor_id,
+            action: self.action,
+            target: self.target,
+            metadata: serde_json::from_str(&self.metadata).unwrap_or(serde_json::Value::Null),
+            created_at: self.created_at,
+        })
     }
 }
 

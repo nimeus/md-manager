@@ -102,6 +102,13 @@ pub struct CreateShareReq {
 }
 
 #[derive(Deserialize)]
+pub struct AuditQuery {
+    pub limit: Option<i64>,
+    pub target: Option<String>,
+    pub action: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct CreateCategoryReq {
     #[serde(default)]
     pub parent_id: Option<Uuid>,

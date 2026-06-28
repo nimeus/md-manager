@@ -388,6 +388,30 @@ async fn full_db_layer() {
         Err(mdm_core::Error::NotFound)
     ));
 
+    // --- audit log (admin reads who-did-what) --------------------------------
+    let audit = db.list_audit(&ctx_a, None, None, 200).await.expect("audit");
+    assert!(
+        audit.iter().any(|e| e.action == "doc.create"),
+        "doc.create audited"
+    );
+    assert!(
+        audit.iter().any(|e| e.action.starts_with("share.")),
+        "share events audited"
+    );
+    let doc_events = db
+        .list_audit(&ctx_a, None, Some("doc."), 200)
+        .await
+        .unwrap();
+    assert!(
+        !doc_events.is_empty() && doc_events.iter().all(|e| e.action.starts_with("doc.")),
+        "action-prefix filter works"
+    );
+    // a non-admin (viewer) cannot read the audit log
+    assert!(matches!(
+        db.list_audit(&ctx_viewer, None, None, 10).await,
+        Err(mdm_core::Error::Forbidden)
+    ));
+
     // --- per-project document quota (abuse guard) ----------------------------
     let qdb = connect_with_quota(2).await;
     let (_q_org, _q_user, q_key) = qdb

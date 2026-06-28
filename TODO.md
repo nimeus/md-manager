@@ -51,6 +51,7 @@ on a machine with npm access; see [frontend/README.md](frontend/README.md).
 - [x] Rate limits (per-user, `governor`) + per-project document quota — config-driven, verified live (429s) + quota integration test
 - [x] Hide per-doc-denied docs from list/search results (not just on access)
 - [x] **Public share links** (migration 0005) — read-only, expiring, revocable; HMAC+pepper token (shown once); db/REST/CLI (`mdm share`); PUBLIC `GET /v1/shared/{token}` (no auth); verified live incl. public fetch + revoke→404 + integration test
+- [x] **Audit query** — admin-only `GET /v1/audit` (+ `mdm audit`, filter by target/action), reads the who/what/when written on every action; RLS-scoped; integration test (entries present, action filter, non-admin Forbidden)
 
 ## Phase 2 — Web connectors (resource server ✅; Logto go-live external)
 - [x] Streamable HTTP `/mcp` transport (served by the API) — 15 tools, verified via curl

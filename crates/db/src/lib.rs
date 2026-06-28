@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 mod access;
 mod apikey;
+mod auditlog;
 mod auth;
 mod category;
 mod document;

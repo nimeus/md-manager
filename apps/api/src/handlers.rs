@@ -403,6 +403,24 @@ pub async fn get_shared(
     Ok(Json(json!(s.db.resolve_share_link(&token).await?)))
 }
 
+// --- audit -----------------------------------------------------------------
+
+pub async fn list_audit(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Query(q): Query<AuditQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let entries =
+        s.db.list_audit(
+            &ctx,
+            q.target.as_deref(),
+            q.action.as_deref(),
+            clamp_limit(q.limit, 50),
+        )
+        .await?;
+    Ok(Json(json!(entries)))
+}
+
 // --- search ----------------------------------------------------------------
 
 pub async fn search(

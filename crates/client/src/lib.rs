@@ -426,6 +426,26 @@ impl Client {
             .await
     }
 
+    pub async fn list_audit(
+        &self,
+        target: Option<&str>,
+        action: Option<&str>,
+        limit: Option<i64>,
+    ) -> R<Value> {
+        let mut q: Vec<(String, String)> = Vec::new();
+        if let Some(t) = target {
+            q.push(("target".into(), t.to_string()));
+        }
+        if let Some(a) = action {
+            q.push(("action".into(), a.to_string()));
+        }
+        if let Some(l) = limit {
+            q.push(("limit".into(), l.to_string()));
+        }
+        self.run(self.http.get(self.url("/v1/audit")).query(&q))
+            .await
+    }
+
     // --- bootstrap (unauthenticated; uses the bootstrap token) -----------
 
     pub async fn bootstrap(

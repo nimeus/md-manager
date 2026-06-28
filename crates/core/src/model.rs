@@ -326,6 +326,19 @@ pub struct SharedDocument {
     pub updated_at: OffsetDateTime,
 }
 
+/// An audit-log entry (who did what, when).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub id: Uuid,
+    pub actor_type: ActorType,
+    pub actor_id: Uuid,
+    pub action: String,
+    pub target: Option<String>,
+    pub metadata: serde_json::Value,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
 /// A full-text search hit, aggregated to the document level.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHit {

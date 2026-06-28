@@ -94,6 +94,7 @@ fn router(state: AppState) -> Router {
         .route("/v1/shares/{id}", delete(handlers::revoke_share))
         // Public, unauthenticated read-only document view.
         .route("/v1/shared/{token}", get(handlers::get_shared))
+        .route("/v1/audit", get(handlers::list_audit))
         .route(
             "/v1/api-keys",
             get(handlers::list_api_keys).post(handlers::create_api_key),
