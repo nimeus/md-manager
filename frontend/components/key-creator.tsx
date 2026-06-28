@@ -27,13 +27,13 @@ export default function KeyCreator() {
         </button>
       </form>
 
-      {state?.error && <p className="mt-3 text-sm text-red-400">{state.error}</p>}
+      {state?.error && <p className="mt-3 text-sm text-red-600">{state.error}</p>}
       {state?.secret && (
-        <div className="mt-3 rounded-md border border-emerald-700/60 bg-emerald-950/30 p-3">
-          <div className="text-xs font-medium text-emerald-300">
+        <div className="mt-3 rounded-md border border-moss/40 bg-moss/10 p-3">
+          <div className="text-xs font-medium text-moss">
             Copy this key now — it is shown only once:
           </div>
-          <code className="mt-1 block break-all text-sm text-emerald-200">{state.secret}</code>
+          <code className="mt-1 block break-all text-sm text-moss">{state.secret}</code>
         </div>
       )}
     </div>

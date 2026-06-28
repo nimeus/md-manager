@@ -48,14 +48,14 @@ export default function Editor({
   return (
     <div className="card">
       <div className="mb-3 flex items-center justify-between">
-        <div className="inline-flex rounded-md border border-zinc-700 p-0.5 text-sm">
+        <div className="inline-flex rounded-md border border-line-2 p-0.5 text-sm">
           {(["edit", "preview"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={
                 "rounded px-3 py-1 capitalize transition " +
-                (tab === t ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:text-zinc-200")
+                (tab === t ? "bg-paper-2 text-ink" : "text-ink-soft hover:text-ink")
               }
             >
               {t}
@@ -63,7 +63,7 @@ export default function Editor({
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-500">{status || (dirty ? "Unsaved changes" : `v${version}`)}</span>
+          <span className="text-xs text-ink-soft">{status || (dirty ? "Unsaved changes" : `v${version}`)}</span>
           <button className="btn" disabled={saving || !dirty} onClick={() => save()}>
             {saving ? "Saving…" : "Save"}
           </button>
@@ -78,23 +78,23 @@ export default function Editor({
           spellCheck={false}
         />
       ) : (
-        <div className="prose-md min-h-[26rem] rounded-md border border-zinc-800 bg-zinc-950/40 p-4">
+        <div className="prose-md min-h-[26rem] rounded-md border border-line bg-paper-2 p-4">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
       )}
 
       {conflict && (
-        <div className="mt-4 rounded-md border border-amber-700/60 bg-amber-950/30 p-4">
-          <div className="text-sm font-medium text-amber-300">
+        <div className="mt-4 rounded-md border border-clay/40 bg-clay-soft/50 p-4">
+          <div className="text-sm font-medium text-clay-dark">
             Version conflict — current is v{conflict.currentVersion}
           </div>
-          <p className="mt-1 text-xs text-amber-200/80">
+          <p className="mt-1 text-xs text-ink-soft">
             Your save was rejected so nothing was lost. Review the current version, then either
             load it (and re-apply your edits) or overwrite it with what you have.
           </p>
           <details className="mt-3 text-xs">
-            <summary className="cursor-pointer text-amber-200">Show current version</summary>
-            <pre className="mt-2 max-h-60 overflow-auto rounded bg-zinc-900 p-3 text-zinc-200">
+            <summary className="cursor-pointer text-clay-dark">Show current version</summary>
+            <pre className="mt-2 max-h-60 overflow-auto rounded bg-panel p-3 text-ink">
               {conflict.current}
             </pre>
           </details>

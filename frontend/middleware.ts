@@ -8,10 +8,15 @@ export function middleware(request: NextRequest) {
   const signedIn = request.cookies.has("mdm_session");
   const { pathname } = request.nextUrl;
 
-  // The Google OAuth routes must run while signed-out (they create the session).
-  const isAuthFlow = pathname === "/login" || pathname.startsWith("/auth/");
+  // Public surface: landing page, docs, login, and the Google OAuth routes (which must run
+  // while signed-out to create the session). Everything else requires a session.
+  const isPublic =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname.startsWith("/docs") ||
+    pathname.startsWith("/auth/");
 
-  if (!signedIn && !isAuthFlow) {
+  if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (signedIn && pathname === "/login") {

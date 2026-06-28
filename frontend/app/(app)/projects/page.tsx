@@ -9,7 +9,7 @@ export default async function ProjectsPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold">Projects</h1>
-      <p className="mt-1 text-sm text-zinc-400">Document containers in your organization.</p>
+      <p className="mt-1 text-sm text-ink-soft">Document containers in your organization.</p>
 
       <form action={createProjectAction} className="mt-5 flex flex-wrap items-end gap-3">
         <div className="w-40">
@@ -25,12 +25,12 @@ export default async function ProjectsPage() {
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {projects.length === 0 && (
-          <p className="text-sm text-zinc-500">No projects yet — create one above.</p>
+          <p className="text-sm text-ink-soft">No projects yet — create one above.</p>
         )}
         {projects.map((p) => (
-          <Link key={p.id} href={`/projects/${p.slug}`} className="card transition hover:border-zinc-700">
+          <Link key={p.id} href={`/projects/${p.slug}`} className="card transition hover:border-line-2">
             <div className="font-medium">{p.name}</div>
-            <div className="mt-1 text-xs text-zinc-500">/{p.slug}</div>
+            <div className="mt-1 text-xs text-ink-soft">/{p.slug}</div>
           </Link>
         ))}
       </div>

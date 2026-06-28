@@ -36,8 +36,8 @@ export default function InviteForm() {
           {pending ? "Inviting…" : "Invite"}
         </button>
       </form>
-      {state?.error && <p className="mt-3 text-sm text-red-400">{state.error}</p>}
-      {state?.ok && <p className="mt-3 text-sm text-emerald-400">{state.ok}</p>}
+      {state?.error && <p className="mt-3 text-sm text-red-600">{state.error}</p>}
+      {state?.ok && <p className="mt-3 text-sm text-moss">{state.ok}</p>}
     </div>
   );
 }

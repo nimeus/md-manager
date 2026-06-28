@@ -1,43 +1,127 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────────
+   md-manager design system — warm editorial. Paper & ink, a single clay
+   accent, serif display + clean sans + mono. Deliberately not the dark
+   indigo "AI dashboard" look.
+   ───────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-paper: #faf8f3;
+  --color-paper-2: #f4f0e8;
+  --color-panel: #fffdf9;
+  --color-ink: #1c1813;
+  --color-ink-2: #463f35;
+  --color-ink-soft: #6f665a;
+  --color-line: #e7e0d2;
+  --color-line-2: #d9d1c0;
+  --color-clay: #b8451d;
+  --color-clay-dark: #97380f;
+  --color-clay-soft: #f3e3d8;
+  --color-moss: #3f5d49;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Iowan Old Style", "Charter", "Palatino Linotype", Palatino,
+    Georgia, ui-serif, serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --shadow-soft: 0 1px 2px rgba(28, 24, 19, 0.04), 0 8px 24px -12px rgba(28, 24, 19, 0.12);
+  --shadow-lift: 0 1px 2px rgba(28, 24, 19, 0.05), 0 18px 40px -16px rgba(28, 24, 19, 0.18);
+}
+
 @layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
   body {
-    @apply bg-zinc-950 text-zinc-100 antialiased;
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern", "liga", "calt";
+  }
+  ::selection {
+    background: var(--color-clay-soft);
+    color: var(--color-clay-dark);
+  }
+  h1, h2, h3 {
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
   }
 }
 
 @layer components {
+  /* Buttons — ink primary (confident), clay accent, quiet ghost. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-1.5
-           text-sm font-medium text-white transition hover:bg-indigo-500
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2
+           text-sm font-medium text-paper shadow-[var(--shadow-soft)] transition
+           hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-clay px-4 py-2
+           text-sm font-medium text-white transition hover:bg-clay-dark
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-zinc-700
-           bg-transparent px-3 py-1.5 text-sm font-medium text-zinc-200 transition
-           hover:bg-zinc-800;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line-2
+           bg-panel px-4 py-2 text-sm font-medium text-ink-2 transition
+           hover:border-ink/30 hover:bg-paper-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
+  .btn-sm { @apply px-3 py-1.5 text-[13px]; }
+
   .input {
-    @apply w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100
-           outline-none transition placeholder:text-zinc-500 focus:border-indigo-500;
+    @apply w-full rounded-lg border border-line-2 bg-panel px-3 py-2 text-sm text-ink
+           shadow-[inset_0_1px_2px_rgba(28,24,19,0.03)] outline-none transition
+           placeholder:text-ink-soft/70 focus:border-clay/50 focus:ring-2 focus:ring-clay/15;
   }
   .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-ink-soft;
   }
   .card {
-    @apply rounded-lg border border-zinc-800 bg-zinc-900/40 p-4;
+    @apply rounded-xl border border-line bg-panel p-5 shadow-[var(--shadow-soft)];
   }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line-2 bg-paper-2
+           px-2.5 py-0.5 text-xs font-medium text-ink-2;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-clay;
+  }
+  .link-accent {
+    @apply text-clay underline decoration-clay/30 underline-offset-2 transition hover:decoration-clay;
+  }
+
+  /* Markdown preview (document editor + docs body). */
+  .prose-md { @apply text-[15px] leading-relaxed text-ink-2; }
+  .prose-md h1 { @apply mb-3 mt-1 font-serif text-3xl font-semibold text-ink; }
+  .prose-md h2 { @apply mb-2 mt-6 font-serif text-2xl font-semibold text-ink; }
+  .prose-md h3 { @apply mb-2 mt-4 font-serif text-xl font-semibold text-ink; }
+  .prose-md p { @apply my-3; }
+  .prose-md ul { @apply my-3 list-disc pl-6; }
+  .prose-md ol { @apply my-3 list-decimal pl-6; }
+  .prose-md li { @apply my-1; }
+  .prose-md a {
+    @apply text-clay underline decoration-clay/30 underline-offset-2 transition hover:decoration-clay;
+  }
+  .prose-md code {
+    @apply rounded bg-paper-2 px-1.5 py-0.5 font-mono text-[0.85em] text-clay-dark;
+  }
+  .prose-md pre {
+    @apply my-4 overflow-x-auto rounded-xl bg-ink p-4 text-sm text-paper;
+  }
+  .prose-md pre code { @apply bg-transparent p-0 text-paper; }
+  .prose-md blockquote {
+    @apply my-4 border-l-2 border-clay/40 bg-clay-soft/30 py-1 pl-4 text-ink-2;
+  }
+  .prose-md table { @apply my-4 w-full text-sm; }
+  .prose-md th { @apply border-b border-line-2 px-3 py-2 text-left font-semibold; }
+  .prose-md td { @apply border-b border-line px-3 py-2 align-top; }
 }
 
-/* Minimal markdown preview styling */
-.prose-md h1 { @apply mb-3 mt-1 text-2xl font-bold; }
-.prose-md h2 { @apply mb-2 mt-4 text-xl font-semibold; }
-.prose-md h3 { @apply mb-2 mt-3 text-lg font-semibold; }
-.prose-md p { @apply my-2 leading-relaxed text-zinc-300; }
-.prose-md ul { @apply my-2 list-disc pl-6 text-zinc-300; }
-.prose-md ol { @apply my-2 list-decimal pl-6 text-zinc-300; }
-.prose-md code { @apply rounded bg-zinc-800 px-1 py-0.5 text-sm text-amber-300; }
-.prose-md pre { @apply my-3 overflow-x-auto rounded-md bg-zinc-900 p-3 text-sm; }
-.prose-md pre code { @apply bg-transparent p-0 text-zinc-200; }
-.prose-md a { @apply text-indigo-400 underline; }
-.prose-md blockquote { @apply border-l-2 border-zinc-700 pl-3 text-zinc-400; }
+/* Subtle paper grain / warmth for big surfaces (used on the landing hero). */
+.paper-texture {
+  background-image:
+    radial-gradient(60rem 40rem at 70% -10%, rgba(184, 69, 29, 0.06), transparent 60%),
+    radial-gradient(50rem 30rem at 0% 0%, rgba(63, 93, 73, 0.05), transparent 55%);
+}
+.hairline { border-color: var(--color-line); }

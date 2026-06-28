@@ -12,9 +12,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
     <div>
       <div className="flex items-baseline justify-between">
         <div>
-          <Link href="/projects" className="text-xs text-zinc-500 hover:text-zinc-300">← Projects</Link>
+          <Link href="/projects" className="text-xs text-ink-soft hover:text-ink-2">← Projects</Link>
           <h1 className="mt-1 text-xl font-semibold">{project.name}</h1>
-          <div className="text-sm text-zinc-500">/{project.slug}</div>
+          <div className="text-sm text-ink-soft">/{project.slug}</div>
         </div>
       </div>
 
@@ -40,16 +40,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </form>
       </details>
 
-      <h2 className="mt-6 text-sm font-medium text-zinc-400">Documents</h2>
-      <div className="mt-2 divide-y divide-zinc-800 overflow-hidden rounded-lg border border-zinc-800">
-        {docs.length === 0 && <p className="p-4 text-sm text-zinc-500">No documents yet.</p>}
+      <h2 className="mt-6 text-sm font-medium text-ink-soft">Documents</h2>
+      <div className="mt-2 divide-y divide-line overflow-hidden rounded-lg border border-line">
+        {docs.length === 0 && <p className="p-4 text-sm text-ink-soft">No documents yet.</p>}
         {docs.map((d) => (
-          <Link key={d.id} href={`/documents/${d.id}`} className="flex items-center justify-between p-3 transition hover:bg-zinc-900">
+          <Link key={d.id} href={`/documents/${d.id}`} className="flex items-center justify-between p-3 transition hover:bg-panel">
             <div>
               <div className="text-sm font-medium">{d.title}</div>
-              <div className="text-xs text-zinc-500">{d.path}</div>
+              <div className="text-xs text-ink-soft">{d.path}</div>
             </div>
-            <span className="text-xs text-zinc-500">v{d.current_version}</span>
+            <span className="text-xs text-ink-soft">v{d.current_version}</span>
           </Link>
         ))}
       </div>

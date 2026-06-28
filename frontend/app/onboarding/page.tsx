@@ -1,17 +1,27 @@
+import Link from "next/link";
+
+import Logo from "@/components/logo";
 import { createOrgAction } from "@/lib/actions";
 
 // Top-level (outside the (app) group) so it isn't subject to the app layout's "must have an
 // org" redirect — used both for the rare zero-org case and to create additional orgs.
 export default function OnboardingPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
+    <div className="paper-texture flex min-h-screen flex-col items-center justify-center px-6">
+      <Link href="/" className="mb-8 transition hover:opacity-80">
+        <Logo />
+      </Link>
+
       <div className="card w-full max-w-md">
-        <h1 className="text-lg font-semibold">Create an organization</h1>
-        <p className="mt-1 text-sm text-zinc-400">
+        <span className="eyebrow">New organization</span>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
+          Name your organization
+        </h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
           Organizations hold your projects and teammates. You can create more and switch between
           them anytime.
         </p>
-        <form action={createOrgAction} className="mt-5 space-y-3">
+        <form action={createOrgAction} className="mt-6 space-y-4">
           <div>
             <label className="label" htmlFor="name">
               Name
@@ -20,7 +30,7 @@ export default function OnboardingPage() {
           </div>
           <div>
             <label className="label" htmlFor="slug">
-              Slug
+              URL slug
             </label>
             <input
               id="slug"
@@ -30,9 +40,9 @@ export default function OnboardingPage() {
               pattern="[a-z0-9\-]+"
               required
             />
-            <p className="mt-1 text-xs text-zinc-500">lowercase letters, digits, and hyphens</p>
+            <p className="mt-1.5 text-xs text-ink-soft">lowercase letters, digits, and hyphens</p>
           </div>
-          <button className="btn w-full" type="submit">
+          <button className="btn-accent w-full justify-center py-2.5" type="submit">
             Create organization
           </button>
         </form>
