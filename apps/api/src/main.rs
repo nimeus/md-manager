@@ -6,6 +6,7 @@ mod google;
 mod handlers;
 mod mcp;
 mod oauth;
+mod oauth_server;
 mod session;
 mod state;
 
@@ -29,6 +30,27 @@ fn router(state: AppState) -> Router {
         .route(
             "/.well-known/oauth-protected-resource",
             get(mcp::protected_resource_metadata),
+        )
+        // Built-in OAuth 2.1 authorization server (native connector)
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(oauth_server::authorization_server_metadata),
+        )
+        .route("/oauth/register", post(oauth_server::register))
+        .route("/oauth/authorize", get(oauth_server::authorize))
+        .route("/oauth/token", post(oauth_server::token))
+        .route("/oauth/revoke", post(oauth_server::revoke))
+        .route(
+            "/v1/oauth/authorization-requests/{id}",
+            get(oauth_server::get_authorization_request),
+        )
+        .route(
+            "/v1/oauth/authorization-requests/{id}/approve",
+            post(oauth_server::approve),
+        )
+        .route(
+            "/v1/oauth/authorization-requests/{id}/deny",
+            post(oauth_server::deny),
         )
         .route("/v1/bootstrap", post(handlers::bootstrap))
         // Web sign-in: BFF exchanges a verified Google ID token for a session token.
@@ -154,12 +176,32 @@ async fn main() -> anyhow::Result<()> {
         governor::Quota::per_minute(per_minute),
     ));
 
-    let oauth = cfg
-        .oauth()
-        .map(|settings| Arc::new(oauth::OAuthValidator::new(&settings)));
-    if oauth.is_some() {
-        tracing::info!("OAuth resource server enabled for the /mcp endpoint");
+    // OAuth: the built-in authorization server (native connector) OR an external JWT issuer
+    // (Logto). Built-in mode takes precedence and is its own issuer.
+    let builtin_oauth = cfg.oauth_builtin();
+    let oauth = if builtin_oauth.is_some() {
+        None
+    } else {
+        cfg.oauth()
+            .map(|settings| Arc::new(oauth::OAuthValidator::new(&settings)))
+    };
+    let issuer: Option<Arc<String>> = if builtin_oauth.is_some() {
+        Some(Arc::new(cfg.public_base_url()))
+    } else {
+        cfg.oauth().map(|s| Arc::new(s.issuer))
+    };
+    match (&builtin_oauth, &oauth) {
+        (Some(_), _) => {
+            tracing::info!("built-in OAuth authorization server enabled (native Claude/ChatGPT connector)")
+        }
+        (None, Some(_)) => tracing::info!("external OAuth (JWT) resource server enabled for /mcp"),
+        _ => {}
     }
+    // Per-IP limiter for anonymous Dynamic Client Registration.
+    let dcr_per_hour = std::num::NonZeroU32::new(cfg.oauth_dcr_per_hour.max(1)).unwrap();
+    let dcr_limiter: Arc<state::IpRateLimiter> = Arc::new(governor::RateLimiter::keyed(
+        governor::Quota::per_hour(dcr_per_hour),
+    ));
 
     // Embeddings (semantic search) — optional, fully env-driven.
     let embedder = cfg.embedding().map(|s| {
@@ -198,8 +240,11 @@ async fn main() -> anyhow::Result<()> {
         bootstrap_token: Arc::new(cfg.admin_bootstrap_token.expose().to_string()),
         oauth,
         resource_url: Arc::new(cfg.public_base_url()),
-        issuer: cfg.oauth().map(|s| Arc::new(s.issuer)),
+        mcp_resource: Arc::new(cfg.mcp_resource()),
+        issuer,
+        builtin_oauth: builtin_oauth.map(Arc::new),
         rate_limiter,
+        dcr_limiter,
         embedder,
         google,
         session_secret: Arc::new(cfg.session_secret.expose().to_string()),

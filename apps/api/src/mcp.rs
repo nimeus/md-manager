@@ -26,9 +26,9 @@ pub async fn protected_resource_metadata(State(s): State<AppState>) -> Response 
         return StatusCode::NOT_FOUND.into_response();
     };
     Json(json!({
-        "resource": s.resource_url.as_str(),
+        "resource": s.mcp_resource.as_str(),
         "authorization_servers": [issuer.as_str()],
-        "scopes_supported": ["mcp:read", "mcp:write"],
+        "scopes_supported": ["mcp"],
         "bearer_methods_supported": ["header"],
     }))
     .into_response()

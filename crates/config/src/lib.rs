@@ -73,6 +73,24 @@ pub struct Config {
     /// Defaults to `http://<api_addr>`.
     pub public_url: Option<String>,
 
+    // --- Built-in OAuth 2.1 authorization server (native connector; no external IdP) ---
+    /// OAuth mode: `off` (default), `builtin` (run the in-app authorization server), or
+    /// `logto` (validate RS256 JWTs from the external issuer in the `oauth_*` settings above).
+    pub oauth_mode: String,
+    /// Public URL of the WEB app, where the consent page lives. The built-in AS redirects the
+    /// browser to `<web_url>/oauth/consent`. Set to the web origin (defaults to `public_url`).
+    pub web_url: Option<String>,
+    /// Built-in AS access-token lifetime (seconds; default 1h).
+    pub oauth_access_ttl_secs: i64,
+    /// Built-in AS refresh-token lifetime (seconds; default 30d).
+    pub oauth_refresh_ttl_secs: i64,
+    /// Built-in AS authorization-code lifetime (seconds; default 60s).
+    pub oauth_code_ttl_secs: i64,
+    /// Built-in AS pending-authorization-request lifetime (seconds; default 10m).
+    pub oauth_request_ttl_secs: i64,
+    /// Dynamic Client Registration rate limit: registrations per hour per client IP.
+    pub oauth_dcr_per_hour: u32,
+
     // --- Web sign-in (Google + web sessions) ---
     /// Google OAuth client id. When set, `POST /v1/auth/google` verifies Google ID tokens
     /// (aud == this) and issues web session tokens. Required for the web app's Google login.
@@ -136,6 +154,18 @@ pub struct OAuthSettings {
     pub org_claim: String,
 }
 
+/// Resolved built-in authorization-server settings (present when `oauth_mode = builtin`).
+#[derive(Debug, Clone)]
+pub struct BuiltinOAuthSettings {
+    /// Web origin the browser is redirected to for the consent page.
+    pub web_url: String,
+    pub access_ttl_secs: i64,
+    pub refresh_ttl_secs: i64,
+    pub code_ttl_secs: i64,
+    pub request_ttl_secs: i64,
+    pub dcr_per_hour: u32,
+}
+
 impl Config {
     /// OAuth settings if fully configured.
     pub fn oauth(&self) -> Option<OAuthSettings> {
@@ -159,6 +189,32 @@ impl Config {
         self.public_url
             .clone()
             .unwrap_or_else(|| format!("http://{}", self.api_addr))
+    }
+
+    /// The canonical MCP resource URI (`<public_url>/mcp`). Bound into connector tokens and
+    /// advertised byte-identically in the protected-resource metadata (RFC 8707).
+    pub fn mcp_resource(&self) -> String {
+        format!("{}/mcp", self.public_base_url().trim_end_matches('/'))
+    }
+
+    /// Built-in authorization-server settings, if `oauth_mode = builtin`.
+    pub fn oauth_builtin(&self) -> Option<BuiltinOAuthSettings> {
+        if !self.oauth_mode.eq_ignore_ascii_case("builtin") {
+            return None;
+        }
+        Some(BuiltinOAuthSettings {
+            web_url: self
+                .web_url
+                .clone()
+                .unwrap_or_else(|| self.public_base_url())
+                .trim_end_matches('/')
+                .to_string(),
+            access_ttl_secs: self.oauth_access_ttl_secs.max(60),
+            refresh_ttl_secs: self.oauth_refresh_ttl_secs.max(60),
+            code_ttl_secs: self.oauth_code_ttl_secs.max(10),
+            request_ttl_secs: self.oauth_request_ttl_secs.max(30),
+            dcr_per_hour: self.oauth_dcr_per_hour.max(1),
+        })
     }
 
     /// Embedding settings, if enabled and fully configured (model + api key + dimensions).
@@ -210,6 +266,13 @@ impl Default for Config {
             oauth_audience: None,
             oauth_org_claim: "org".to_string(),
             public_url: None,
+            oauth_mode: "off".to_string(),
+            web_url: None,
+            oauth_access_ttl_secs: 60 * 60,
+            oauth_refresh_ttl_secs: 60 * 60 * 24 * 30,
+            oauth_code_ttl_secs: 60,
+            oauth_request_ttl_secs: 600,
+            oauth_dcr_per_hour: 20,
             google_client_id: None,
             session_secret: Secret::new("dev-insecure-session-secret-change-me".into()),
             session_ttl_secs: 60 * 60 * 24 * 30,
