@@ -8,20 +8,29 @@ const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
 
 /**
- * The app's PUBLIC origin (e.g. `https://mdm.example.com`). Behind a reverse proxy the Next
- * server only sees its internal bind address (`0.0.0.0:3000`), which would produce a broken
- * OAuth `redirect_uri`. Resolve it from, in order: `MDM_APP_URL` (set this in production for
- * certainty), the `X-Forwarded-Host`/`-Proto` headers the proxy sets, then the request URL
- * (correct in local dev).
+ * The app's PUBLIC origin (e.g. `https://mdm.example.com`), used for the OAuth `redirect_uri`
+ * and post-login redirects. Behind a reverse proxy the Next server only sees its internal bind
+ * address, so we resolve it from a TRUSTED source:
+ *  1. `MDM_APP_URL` — authoritative, not attacker-controllable. Set this in production.
+ *  2. `X-Forwarded-Host` — only when it matches `MDM_ALLOWED_HOSTS`, so a forged header can't
+ *     redirect the flow to an arbitrary host (host-header injection / open redirect).
+ *  3. the request URL — correct for local dev with no proxy.
  */
 export function publicOrigin(req: Request): string {
   const env = process.env.MDM_APP_URL?.replace(/\/+$/, "");
   if (env) return env;
-  const fwdHost = req.headers.get("x-forwarded-host");
-  if (fwdHost) {
-    const proto = req.headers.get("x-forwarded-proto") ?? "https";
-    return `${proto}://${fwdHost.split(",")[0].trim()}`;
+
+  const allowed = (process.env.MDM_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  const fwdHost = req.headers.get("x-forwarded-host")?.split(",")[0].trim();
+  if (fwdHost && allowed.includes(fwdHost.toLowerCase())) {
+    const rawProto = req.headers.get("x-forwarded-proto")?.split(",")[0].trim().toLowerCase();
+    const proto = rawProto === "http" || rawProto === "https" ? rawProto : "https";
+    return `${proto}://${fwdHost}`;
   }
+
   // Local dev (no proxy): the request URL is correct.
   return new URL(req.url).origin;
 }
