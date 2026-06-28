@@ -46,9 +46,9 @@ n=$(date +%s)
 boot=$(curl -s -m10 -X POST "$API_URL/v1/bootstrap" \
   -H 'content-type: application/json' -H "x-bootstrap-token: $BOOTSTRAP_TOKEN" \
   -d "{\"email\":\"smoke$n@example.com\",\"display_name\":\"Smoke\",\"org_slug\":\"smoke$n\",\"org_name\":\"Smoke $n\",\"key_name\":\"smoke\"}")
-USERID=$(printf '%s' "$boot" | sed -n 's/.*"user":{"id":"\([^"]*\)".*/\1/p')
-ORGID=$(printf '%s' "$boot"  | sed -n 's/.*"org":{"id":"\([^"]*\)".*/\1/p')
-KEY=$(printf '%s' "$boot"    | sed -n 's/.*"secret":"\([^"]*\)".*/\1/p')
+# Parse with python (reliable across platforms; BSD/macOS sed mishandles the JSON braces).
+read USERID ORGID KEY < <(printf '%s' "$boot" | python3 -c \
+  'import sys,json;d=json.load(sys.stdin);print(d["user"]["id"],d["org"]["id"],d["api_key"]["secret"])' 2>/dev/null)
 [ -n "$USERID" ] && [ -n "$KEY" ] || die "bootstrap failed (wrong token?). Response: $boot"
 curl -s -m10 -X POST "$API_URL/v1/projects" -H "authorization: Bearer $KEY" \
   -H 'content-type: application/json' -d "{\"slug\":\"smoke$n\",\"name\":\"Smoke Project $n\"}" -o /dev/null
