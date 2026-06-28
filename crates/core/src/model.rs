@@ -222,6 +222,17 @@ pub struct Tag {
     pub name: String,
 }
 
+/// An org-scoped, hierarchical category (crosses projects). `parent_id` is `None` at the root.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Category {
+    pub id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub slug: String,
+    pub name: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
 /// Public info about an API key (never includes the secret or its hash).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKeyInfo {

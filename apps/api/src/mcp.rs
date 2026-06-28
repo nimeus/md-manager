@@ -236,6 +236,22 @@ async fn call_tool(db: &Db, ctx: &AuthContext, name: &str, args: &Value) -> Resu
             .await
             .map(|t| format!("Tagged with {}", t.name))
             .map_err(e),
+        "list_categories" => db.list_categories(ctx).await.map(|v| pretty(&v)).map_err(e),
+        "create_category" => {
+            let parent = match args.get("parent_id").and_then(Value::as_str) {
+                Some(s) => Some(Uuid::parse_str(s).map_err(|_| "parent_id is not a valid UUID".to_string())?),
+                None => None,
+            };
+            db.create_category(ctx, parent, arg_str(args, "slug")?, arg_str(args, "name")?)
+                .await
+                .map(|v| pretty(&v))
+                .map_err(e)
+        }
+        "categorize_doc" => db
+            .categorize_document(ctx, arg_uuid(args, "document_id")?, arg_uuid(args, "category_id")?)
+            .await
+            .map(|_| "Filed under category.".to_string())
+            .map_err(e),
         other => Err(format!("unknown tool: {other}")),
     }
 }

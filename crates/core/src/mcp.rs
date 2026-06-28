@@ -45,6 +45,13 @@ pub fn tool_definitions() -> Value {
         tool("list_tags", "List tags in your organization.", json!({}), &[]),
         tool("add_tag", "Attach a tag to a document (creating the tag if needed).",
              json!({ "document_id": { "type": "string" }, "name": { "type": "string" } }), &["document_id", "name"]),
+        tool("list_categories", "List categories (org-scoped, hierarchical, cross-project).", json!({}), &[]),
+        tool("create_category", "Create a category, optionally under a parent.",
+             json!({ "slug": { "type": "string" }, "name": { "type": "string" }, "parent_id": { "type": "string" } }),
+             &["slug", "name"]),
+        tool("categorize_doc", "File a document under a category.",
+             json!({ "document_id": { "type": "string" }, "category_id": { "type": "string" } }),
+             &["document_id", "category_id"]),
     ])
 }
 

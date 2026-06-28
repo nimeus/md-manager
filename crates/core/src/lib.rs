@@ -19,6 +19,7 @@ pub mod validate;
 
 pub use error::{Error, Result};
 pub use model::{
-    ActorType, ApiKeyCreated, ApiKeyInfo, AuthContext, Document, DocumentSummary, DocumentVersion,
-    Organization, OrgRole, Project, Role, SearchHit, Tag, User, VersionKind, VersionSummary,
+    ActorType, ApiKeyCreated, ApiKeyInfo, AuthContext, Category, Document, DocumentSummary,
+    DocumentVersion, Organization, OrgRole, Project, Role, SearchHit, Tag, User, VersionKind,
+    VersionSummary,
 };

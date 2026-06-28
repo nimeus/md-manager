@@ -153,4 +153,29 @@ async fn full_db_layer() {
     // --- revoke kills the key -------------------------------------------------
     db.revoke_api_key(&ctx_a, viewer_key.info.id).await.expect("revoke");
     assert!(db.authenticate_api_key(&viewer_key.secret).await.is_err());
+
+    // --- categories (hierarchical, cross-project) ----------------------------
+    let root = db.create_category(&ctx_a, None, "engineering", "Engineering").await.expect("root cat");
+    let child = db
+        .create_category(&ctx_a, Some(root.id), "backend", "Backend")
+        .await
+        .expect("child cat");
+    assert_eq!(child.parent_id, Some(root.id));
+    // duplicate root slug rejected
+    assert!(db.create_category(&ctx_a, None, "engineering", "Dup").await.is_err());
+
+    db.categorize_document(&ctx_a, doc.id, child.id).await.expect("categorize");
+    let doc_cats = db.list_document_categories(&ctx_a, doc.id).await.unwrap();
+    assert_eq!(doc_cats.len(), 1);
+    assert_eq!(doc_cats[0].id, child.id);
+    let in_cat = db.list_documents_in_category(&ctx_a, child.id).await.unwrap();
+    assert_eq!(in_cat.len(), 1);
+    assert_eq!(in_cat[0].id, doc.id);
+
+    // tenant isolation: org B can't categorize org A's doc, nor see A's categories
+    assert!(db.list_categories(&ctx_b).await.unwrap().is_empty());
+    assert!(matches!(
+        db.categorize_document(&ctx_b, doc.id, child.id).await,
+        Err(mdm_core::Error::NotFound)
+    ));
 }

@@ -57,7 +57,16 @@ fn router(state: AppState) -> Router {
             "/v1/documents/{id}/tags",
             get(handlers::list_document_tags).post(handlers::add_document_tag),
         )
+        .route(
+            "/v1/documents/{id}/categories",
+            get(handlers::list_document_categories).post(handlers::categorize_document),
+        )
         .route("/v1/tags", get(handlers::list_tags))
+        .route(
+            "/v1/categories",
+            get(handlers::list_categories).post(handlers::create_category),
+        )
+        .route("/v1/categories/{id}/documents", get(handlers::list_category_documents))
         .route("/v1/search", get(handlers::search))
         .route(
             "/v1/api-keys",

@@ -2,8 +2,8 @@
 //! Enum columns are stored as text and converted here.
 
 use mdm_core::model::{
-    ActorType, ApiKeyInfo, Document, DocumentSummary, DocumentVersion, Organization, OrgRole,
-    Project, SearchHit, Tag, User, VersionKind, VersionSummary,
+    ActorType, ApiKeyInfo, Category, Document, DocumentSummary, DocumentVersion, Organization,
+    OrgRole, Project, SearchHit, Tag, User, VersionKind, VersionSummary,
 };
 use mdm_core::{Error, Result};
 use sqlx::FromRow;
@@ -180,6 +180,26 @@ impl From<TagRow> for Tag {
         Tag {
             id: r.id,
             name: r.name,
+        }
+    }
+}
+
+#[derive(FromRow)]
+pub struct CategoryRow {
+    pub id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub slug: String,
+    pub name: String,
+    pub created_at: OffsetDateTime,
+}
+impl From<CategoryRow> for Category {
+    fn from(r: CategoryRow) -> Self {
+        Category {
+            id: r.id,
+            parent_id: r.parent_id,
+            slug: r.slug,
+            name: r.name,
+            created_at: r.created_at,
         }
     }
 }

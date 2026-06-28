@@ -243,6 +243,39 @@ impl Client {
         .await
     }
 
+    // --- categories ------------------------------------------------------
+
+    pub async fn list_categories(&self) -> R<Value> {
+        self.run(self.http.get(self.url("/v1/categories"))).await
+    }
+
+    pub async fn create_category(&self, parent_id: Option<&str>, slug: &str, name: &str) -> R<Value> {
+        let mut body = json!({ "slug": slug, "name": name });
+        if let Some(p) = parent_id {
+            body["parent_id"] = json!(p);
+        }
+        self.run(self.http.post(self.url("/v1/categories")).json(&body)).await
+    }
+
+    pub async fn categorize_document(&self, doc_id: &str, category_id: &str) -> R<Value> {
+        self.run(
+            self.http
+                .post(self.url(&format!("/v1/documents/{doc_id}/categories")))
+                .json(&json!({ "category_id": category_id })),
+        )
+        .await
+    }
+
+    pub async fn list_document_categories(&self, doc_id: &str) -> R<Value> {
+        self.run(self.http.get(self.url(&format!("/v1/documents/{doc_id}/categories"))))
+            .await
+    }
+
+    pub async fn list_category_documents(&self, category_id: &str) -> R<Value> {
+        self.run(self.http.get(self.url(&format!("/v1/categories/{category_id}/documents"))))
+            .await
+    }
+
     pub async fn search(&self, query: &str, project_id: Option<&str>, limit: Option<i64>) -> R<Value> {
         let mut q: Vec<(String, String)> = vec![("q".into(), query.to_string())];
         if let Some(p) = project_id {

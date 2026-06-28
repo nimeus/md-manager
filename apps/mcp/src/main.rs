@@ -224,6 +224,21 @@ async fn call_tool(client: &Client, name: &str, args: &Value) -> Result<String, 
             .await
             .map(|v| format!("Tagged with {}", v["name"]))
             .map_err(fmt_err),
+        "list_categories" => client.list_categories().await.map(|v| pretty(&v)).map_err(fmt_err),
+        "create_category" => client
+            .create_category(
+                args.get("parent_id").and_then(Value::as_str),
+                arg_str(args, "slug")?,
+                arg_str(args, "name")?,
+            )
+            .await
+            .map(|v| pretty(&v))
+            .map_err(fmt_err),
+        "categorize_doc" => client
+            .categorize_document(arg_str(args, "document_id")?, arg_str(args, "category_id")?)
+            .await
+            .map(|_| "Filed under category.".to_string())
+            .map_err(fmt_err),
         other => Err(format!("unknown tool: {other}")),
     }
 }

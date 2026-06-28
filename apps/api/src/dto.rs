@@ -92,3 +92,16 @@ pub struct SearchQuery {
     pub project_id: Option<Uuid>,
     pub limit: Option<i64>,
 }
+
+#[derive(Deserialize)]
+pub struct CreateCategoryReq {
+    #[serde(default)]
+    pub parent_id: Option<Uuid>,
+    pub slug: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct CategorizeReq {
+    pub category_id: Uuid,
+}

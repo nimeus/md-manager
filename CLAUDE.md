@@ -76,5 +76,5 @@ CLI/MCP: `MDM_API_URL`, `MDM_API_KEY`, `MDM_BOOTSTRAP_TOKEN`. CLI also reads `~/
 
 ## Notes / known follow-ups
 - MCP is a hand-rolled stdio JSON-RPC server (robust, spec-compliant). Phase 2 adds Streamable HTTP + OAuth; could adopt `rmcp` then.
-- Per-team / per-doc grants + categories: schema-ready but the RBAC resolver currently uses org role. Rate limiting deferred. CI workflow not yet added.
+- Categories (org-scoped, hierarchical, cross-project) shipped across db/REST/CLI/MCP (migration 0003). Teams + per-project/per-doc grants + the full RBAC lattice are still pending (resolver uses org role). Rate limiting deferred. CI workflow not yet added.
 - When a decision changes, update docs/PLAN.md + this file in the same change.

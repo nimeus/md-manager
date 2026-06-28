@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 mod apikey;
 mod auth;
+mod category;
 mod document;
 mod org;
 mod rows;

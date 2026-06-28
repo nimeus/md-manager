@@ -62,6 +62,11 @@ enum Cmd {
         #[command(subcommand)]
         cmd: TagCmd,
     },
+    /// Categories (org-scoped, hierarchical)
+    Cat {
+        #[command(subcommand)]
+        cmd: CatCmd,
+    },
     /// API keys
     Keys {
         #[command(subcommand)]
@@ -220,6 +225,25 @@ struct SearchArgs {
 enum TagCmd {
     List,
     Add { doc_id: String, name: String },
+}
+
+#[derive(Subcommand)]
+enum CatCmd {
+    /// List categories
+    List,
+    /// Create a category (optionally under a parent)
+    Create {
+        #[arg(long)]
+        slug: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        parent: Option<String>,
+    },
+    /// File a document under a category
+    Add { doc_id: String, category_id: String },
+    /// List documents in a category
+    Docs { category_id: String },
 }
 
 #[derive(Subcommand)]
@@ -434,6 +458,23 @@ async fn run(cli: Cli) -> Result<()> {
             match cmd {
                 TagCmd::List => print_json(&c.list_tags().await?),
                 TagCmd::Add { doc_id, name } => print_json(&c.add_document_tag(doc_id, name).await?),
+            }
+        }
+
+        Cmd::Cat { cmd } => {
+            let c = client(&cli)?;
+            match cmd {
+                CatCmd::List => print_json(&c.list_categories().await?),
+                CatCmd::Create { slug, name, parent } => {
+                    print_json(&c.create_category(parent.as_deref(), slug, name).await?)
+                }
+                CatCmd::Add { doc_id, category_id } => {
+                    c.categorize_document(doc_id, category_id).await?;
+                    println!("filed {doc_id} under {category_id}");
+                }
+                CatCmd::Docs { category_id } => {
+                    print_json(&c.list_category_documents(category_id).await?)
+                }
             }
         }
 

@@ -224,6 +224,47 @@ pub async fn add_document_tag(
     Ok((StatusCode::CREATED, Json(tag)).into_response())
 }
 
+// --- categories ------------------------------------------------------------
+
+pub async fn list_categories(State(s): State<AppState>, Auth(ctx): Auth) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_categories(&ctx).await?)))
+}
+
+pub async fn create_category(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Json(req): Json<CreateCategoryReq>,
+) -> ApiResult<Response> {
+    let cat = s.db.create_category(&ctx, req.parent_id, &req.slug, &req.name).await?;
+    Ok((StatusCode::CREATED, Json(cat)).into_response())
+}
+
+pub async fn list_category_documents(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_documents_in_category(&ctx, id).await?)))
+}
+
+pub async fn list_document_categories(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_document_categories(&ctx, id).await?)))
+}
+
+pub async fn categorize_document(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CategorizeReq>,
+) -> ApiResult<StatusCode> {
+    s.db.categorize_document(&ctx, id, req.category_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // --- search ----------------------------------------------------------------
 
 pub async fn search(
