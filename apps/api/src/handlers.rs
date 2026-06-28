@@ -608,3 +608,37 @@ pub async fn revoke_api_key(
     s.db.revoke_api_key(&ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ---- Connected apps (built-in OAuth connector grants) -----------------------
+
+/// List the signed-in user's active connector grants across their orgs.
+pub async fn list_oauth_grants(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_oauth_grants(&ctx).await?)))
+}
+
+/// Revoke a connector's grant in one org.
+pub async fn revoke_oauth_grant(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(client_id): Path<String>,
+    Json(req): Json<RevokeGrantReq>,
+) -> ApiResult<StatusCode> {
+    s.db.revoke_oauth_grant(&ctx, &client_id, req.org_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Move a live connection to another of the user's orgs (token re-binds; no reconnect).
+pub async fn switch_oauth_grant(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(client_id): Path<String>,
+    Json(req): Json<SwitchGrantReq>,
+) -> ApiResult<StatusCode> {
+    s.db
+        .switch_oauth_grant(&ctx, &client_id, req.from_org_id, req.to_org_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}

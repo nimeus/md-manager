@@ -3,7 +3,7 @@
 //! Requires the local dev Postgres with roles `md_owner`/`md_app` (see CLAUDE.md).
 //! Run: `cargo test -p mdm-db --test oauth`
 
-use mdm_core::model::{ActorType, OrgRole};
+use mdm_core::model::{ActorType, AuthContext, OrgRole};
 use mdm_db::Db;
 use serial_test::serial;
 use sqlx::postgres::PgPoolOptions;
@@ -276,4 +276,91 @@ async fn code_bound_to_its_client() {
             .await
             .is_err()
     );
+}
+
+/// Run a full connect (register → approve → token), returning `(client_id, tokens)`.
+async fn connect(db: &Db, user_id: Uuid, org_id: Uuid) -> (String, mdm_db::IssuedTokens) {
+    let client = db
+        .register_oauth_client("Claude", &[REDIRECT.to_string()], true)
+        .await
+        .unwrap();
+    let info = db.find_oauth_client(&client.client_id).await.unwrap();
+    let req = db
+        .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
+        .await
+        .unwrap();
+    let minted = db.approve_authorization_request(req, user_id, org_id, 60).await.unwrap();
+    let tokens = db
+        .exchange_auth_code(info.db_id, &minted.code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .await
+        .unwrap();
+    (client.client_id, tokens)
+}
+
+fn ctx(user_id: Uuid, org_id: Uuid) -> AuthContext {
+    AuthContext { org_id, user_id, actor_type: ActorType::User, org_role: OrgRole::Owner }
+}
+
+#[tokio::test]
+#[serial]
+async fn grant_list_switch_revoke() {
+    let db = setup().await;
+    let (user, org_a) = tenant(&db, "a@x.com", "acme").await;
+    // Same user owns a second org (bootstrap reuses the user by email).
+    let org_b = db
+        .bootstrap("a@x.com", "Tester", "globex", "Org B", "k2")
+        .await
+        .unwrap()
+        .0
+        .id;
+    let c = ctx(user, org_a);
+
+    let (client_id, tokens) = connect(&db, user, org_a).await;
+
+    // Listed once, bound to org A.
+    let grants = db.list_oauth_grants(&c).await.unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0].org_id, org_a);
+    assert_eq!(grants[0].client_id, client_id);
+
+    // Switch org A → org B: the SAME access token now resolves to org B (no reconnect).
+    db.switch_oauth_grant(&c, &client_id, org_a, org_b).await.unwrap();
+    let grants = db.list_oauth_grants(&c).await.unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0].org_id, org_b, "grant moved to org B");
+    let actx = db
+        .authenticate_oauth_access_token(&tokens.access_token, RESOURCE)
+        .await
+        .unwrap();
+    assert_eq!(actx.org_id, org_b, "live token now operates in org B");
+
+    // Revoke in org B: grant gone + token dead.
+    db.revoke_oauth_grant(&c, &client_id, org_b).await.unwrap();
+    assert!(db.list_oauth_grants(&c).await.unwrap().is_empty());
+    assert!(
+        db.authenticate_oauth_access_token(&tokens.access_token, RESOURCE)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn switch_to_non_member_org_is_forbidden() {
+    let db = setup().await;
+    let (user, org_a) = tenant(&db, "a@x.com", "acme").await;
+    // A different user's org — `user` is not a member.
+    let org_c = db
+        .bootstrap("c@x.com", "C", "ccorp", "C Org", "k")
+        .await
+        .unwrap()
+        .0
+        .id;
+    let c = ctx(user, org_a);
+    let (client_id, _t) = connect(&db, user, org_a).await;
+
+    assert!(db.switch_oauth_grant(&c, &client_id, org_a, org_c).await.is_err());
+    // Unchanged — still in org A.
+    let grants = db.list_oauth_grants(&c).await.unwrap();
+    assert_eq!(grants[0].org_id, org_a);
 }

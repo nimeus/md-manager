@@ -52,6 +52,16 @@ fn router(state: AppState) -> Router {
             "/v1/oauth/authorization-requests/{id}/deny",
             post(oauth_server::deny),
         )
+        // Connected apps — manage connector grants (list / switch org / revoke)
+        .route("/v1/oauth/grants", get(handlers::list_oauth_grants))
+        .route(
+            "/v1/oauth/grants/{client_id}/revoke",
+            post(handlers::revoke_oauth_grant),
+        )
+        .route(
+            "/v1/oauth/grants/{client_id}/switch",
+            post(handlers::switch_oauth_grant),
+        )
         .route("/v1/bootstrap", post(handlers::bootstrap))
         // Web sign-in: BFF exchanges a verified Google ID token for a session token.
         .route("/v1/auth/google", post(handlers::auth_google))
@@ -250,6 +260,25 @@ async fn main() -> anyhow::Result<()> {
         session_secret: Arc::new(cfg.session_secret.expose().to_string()),
         session_ttl_secs: cfg.session_ttl_secs,
     };
+
+    // Built-in AS housekeeping: periodically sweep expired authorization requests + codes
+    // (Postgres has no TTL GC, and these are short-lived rows).
+    if state.builtin_oauth.is_some() {
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                tick.tick().await;
+                match db.cleanup_expired_oauth().await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(deleted = n, "swept expired OAuth requests/codes")
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "OAuth cleanup failed"),
+                }
+            }
+        });
+    }
 
     let listener = tokio::net::TcpListener::bind(cfg.api_addr).await?;
     tracing::info!(addr = %cfg.api_addr, "md-manager API listening");
