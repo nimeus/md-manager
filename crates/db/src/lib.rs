@@ -21,6 +21,7 @@ mod auth;
 mod category;
 mod document;
 mod embedding;
+mod oauth;
 mod org;
 mod rows;
 mod search;
@@ -30,6 +31,10 @@ mod tag;
 
 pub use document::UpdateOutcome;
 pub use embedding::{EmbeddingStore, to_pgvector_literal};
+pub use oauth::{
+    AuthRequestDisplay, DenyOutcome, IssuedTokens, MintedCode, OAuthClientInfo,
+    RegisteredOAuthClient,
+};
 
 /// Embedded migrations (run as the owner/migrator role).
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");

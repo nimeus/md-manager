@@ -1181,6 +1181,7 @@ dependencies = [
 name = "mdm-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "diffy",
  "hex",
  "hmac",
