@@ -315,6 +315,7 @@ pub struct ShareLinkInfoRow {
     pub id: Uuid,
     pub document_id: Uuid,
     pub token_prefix: String,
+    pub audience: String,
     pub created_at: OffsetDateTime,
     pub expires_at: Option<OffsetDateTime>,
     pub revoked_at: Option<OffsetDateTime>,
@@ -325,6 +326,7 @@ impl From<ShareLinkInfoRow> for ShareLinkInfo {
             id: r.id,
             document_id: r.document_id,
             token_prefix: r.token_prefix,
+            audience: r.audience,
             created_at: r.created_at,
             expires_at: r.expires_at,
             revoked_at: r.revoked_at,
@@ -335,9 +337,11 @@ impl From<ShareLinkInfoRow> for ShareLinkInfo {
 /// Row used to resolve a presented share token (cross-org lookup by prefix).
 #[derive(FromRow)]
 pub struct ShareLinkAuthRow {
+    pub id: Uuid,
     pub org_id: Uuid,
     pub document_id: Uuid,
     pub token_hash: String,
+    pub audience: String,
     pub expires_at: Option<OffsetDateTime>,
     pub revoked_at: Option<OffsetDateTime>,
 }

@@ -131,6 +131,12 @@ export const api = {
     req(`/v1/members/${userId}`, { method: "PUT", body: JSON.stringify({ role }) }),
   removeMember: (userId: string) => req(`/v1/members/${userId}`, { method: "DELETE" }),
 
+  // sharing
+  createShare: (docId: string, audience: string, recipients: string[], expiresInDays?: number) =>
+    req(`/v1/documents/${docId}/shares`, json({ audience, recipients, expires_in_days: expiresInDays ?? null })),
+  listShares: (docId: string) => req(`/v1/documents/${docId}/shares`),
+  revokeShare: (linkId: string) => req(`/v1/shares/${linkId}`, { method: "DELETE" }),
+
   // OAuth consent (built-in connector authorization server)
   getOAuthRequest: (id: string) => req(`/v1/oauth/authorization-requests/${id}`),
   approveOAuthConsent: (id: string, orgId: string) =>
@@ -160,6 +166,23 @@ export type GoogleExchange = {
  * Exchange a verified Google ID token for a backend session token. Session-less (this IS the
  * login), so it calls the API directly. Throws [`ApiError`] on failure.
  */
+/**
+ * Resolve a shared document. Session-aware but not session-required: anonymous works for public
+ * links; private links need the viewer's session (attached if present). Returns status so the
+ * page can branch (200 render / 401 sign-in / 403 no-access / 404 invalid).
+ */
+export async function getSharedDoc(token: string): Promise<{ status: number; data: any }> {
+  const session = await getSession();
+  const headers: Record<string, string> = {};
+  if (session) headers.authorization = `Bearer ${session.token}`;
+  const res = await fetch(`${API_BASE}/v1/shared/${encodeURIComponent(token)}`, {
+    headers,
+    cache: "no-store",
+  });
+  const text = await res.text();
+  return { status: res.status, data: text ? safeJson(text) : null };
+}
+
 export async function exchangeGoogleToken(idToken: string): Promise<GoogleExchange> {
   const res = await fetch(`${API_BASE}/v1/auth/google`, {
     method: "POST",

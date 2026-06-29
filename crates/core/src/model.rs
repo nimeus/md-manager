@@ -346,6 +346,8 @@ pub struct ShareLinkInfo {
     pub id: Uuid,
     pub document_id: Uuid,
     pub token_prefix: String,
+    /// Who may open the link: `public`, `members`, or `emails`.
+    pub audience: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339::option")]

@@ -160,3 +160,39 @@ export async function acceptInviteAction(formData: FormData): Promise<void> {
   if (orgId) await setCurrentOrg(orgId);
   redirect("/projects");
 }
+
+// --- sharing -----------------------------------------------------------------
+
+export async function createShareAction(
+  _prev: { link?: string; error?: string } | null,
+  formData: FormData,
+): Promise<{ link?: string; error?: string } | null> {
+  const docId = String(formData.get("doc_id") ?? "");
+  const audience = String(formData.get("audience") ?? "public");
+  const recipients = String(formData.get("recipients") ?? "")
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const days = Number(formData.get("expires_days") ?? "");
+  const expiresInDays = Number.isFinite(days) && days > 0 ? days : undefined;
+  try {
+    const link = await api.createShare(docId, audience, recipients, expiresInDays);
+    revalidatePath(`/documents/${docId}`);
+    return { link: link.token }; // the one-time secret; the client builds the /s/<token> URL
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "Failed to create link" };
+  }
+}
+
+export async function revokeShareAction(formData: FormData): Promise<void> {
+  const linkId = String(formData.get("link_id") ?? "");
+  const docId = String(formData.get("doc_id") ?? "");
+  if (linkId) {
+    try {
+      await api.revokeShare(linkId);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (docId) revalidatePath(`/documents/${docId}`);
+}

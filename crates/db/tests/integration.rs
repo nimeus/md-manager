@@ -362,23 +362,23 @@ async fn full_db_layer() {
 
     // --- public share links --------------------------------------------------
     let share = db
-        .create_share_link(&ctx_a, doc.id, Some(7))
+        .create_share_link(&ctx_a, doc.id, "public", &[], Some(7))
         .await
         .expect("create share");
     assert!(share.token.starts_with("sl_"));
     // public resolve returns the document content (no auth context)
-    let shared = db.resolve_share_link(&share.token).await.expect("resolve");
+    let shared = db.resolve_share_link(&share.token, None).await.expect("resolve");
     assert_eq!(shared.document_id, doc.id);
     assert!(!shared.content.is_empty());
     assert_eq!(db.list_share_links(&ctx_a, doc.id).await.unwrap().len(), 1);
     // a bogus token resolves to NotFound (no leak)
     assert!(matches!(
-        db.resolve_share_link("sl_deadbeef00").await,
+        db.resolve_share_link("sl_deadbeef00", None).await,
         Err(mdm_core::Error::NotFound)
     ));
     // a viewer can't mint a share link (needs editor on the doc)
     assert!(matches!(
-        db.create_share_link(&ctx_viewer, doc.id, None).await,
+        db.create_share_link(&ctx_viewer, doc.id, "public", &[], None).await,
         Err(mdm_core::Error::Forbidden)
     ));
     // revoke → the link stops resolving
@@ -386,7 +386,7 @@ async fn full_db_layer() {
         .await
         .expect("revoke");
     assert!(matches!(
-        db.resolve_share_link(&share.token).await,
+        db.resolve_share_link(&share.token, None).await,
         Err(mdm_core::Error::NotFound)
     ));
 

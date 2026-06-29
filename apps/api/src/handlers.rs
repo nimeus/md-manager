@@ -476,9 +476,10 @@ pub async fn create_share(
     Path(id): Path<Uuid>,
     Json(req): Json<CreateShareReq>,
 ) -> ApiResult<Response> {
-    let link =
-        s.db.create_share_link(&ctx, id, req.expires_in_days)
-            .await?;
+    let link = s
+        .db
+        .create_share_link(&ctx, id, &req.audience, &req.recipients, req.expires_in_days)
+        .await?;
     Ok((StatusCode::CREATED, Json(link)).into_response())
 }
 
@@ -502,9 +503,17 @@ pub async fn revoke_share(
 /// PUBLIC — no auth. The token is the authorization; invalid/expired/revoked → 404.
 pub async fn get_shared(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(token): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(json!(s.db.resolve_share_link(&token).await?)))
+    // Optional viewer identity (a web session) — required for `members`/`emails` shares.
+    let viewer = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .filter(|t| t.starts_with(crate::session::SESSION_PREFIX))
+        .and_then(|t| crate::session::verify(&s.session_secret, t).ok());
+    Ok(Json(json!(s.db.resolve_share_link(&token, viewer).await?)))
 }
 
 // --- audit -----------------------------------------------------------------

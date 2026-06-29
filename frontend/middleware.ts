@@ -18,7 +18,9 @@ export function middleware(request: NextRequest) {
     // The OAuth consent + invite-accept pages self-guard (they redirect to /login?next=… when
     // signed out), so they must not be force-redirected here — that would drop their token.
     pathname.startsWith("/oauth/") ||
-    pathname.startsWith("/invite/");
+    pathname.startsWith("/invite/") ||
+    // Public share view: self-guards (renders public links anonymously; redirects private to login).
+    pathname.startsWith("/s/");
 
   if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
