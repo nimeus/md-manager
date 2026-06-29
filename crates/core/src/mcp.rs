@@ -13,6 +13,13 @@ pub fn tool_definitions() -> Value {
     let doc_id = json!({ "document_id": { "type": "string", "description": "Document UUID" } });
     json!([
         tool(
+            "list_orgs",
+            "List the organizations you can access (id, slug, name, role). Use a slug as the `org` \
+             argument on the other tools when this connector is authorized for all your organizations.",
+            json!({}),
+            &[]
+        ),
+        tool(
             "list_projects",
             "List projects in your organization.",
             json!({}),
@@ -142,7 +149,19 @@ pub fn tool_definitions() -> Value {
     ])
 }
 
-fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
+fn tool(name: &str, description: &str, mut properties: Value, required: &[&str]) -> Value {
+    // Every tool accepts an optional `org` (slug): used to pick the org per call for connectors
+    // authorized for ALL the user's orgs; ignored for single-org connectors / API keys.
+    if let Some(obj) = properties.as_object_mut() {
+        obj.insert(
+            "org".to_string(),
+            json!({
+                "type": "string",
+                "description": "Organization slug. Required only when this connector spans all your \
+                                organizations (see list_orgs); ignored otherwise."
+            }),
+        );
+    }
     json!({
         "name": name,
         "description": description,

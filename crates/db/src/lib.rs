@@ -32,8 +32,8 @@ mod tag;
 pub use document::UpdateOutcome;
 pub use embedding::{EmbeddingStore, to_pgvector_literal};
 pub use oauth::{
-    AuthRequestDisplay, DenyOutcome, IssuedTokens, MintedCode, OAuthClientInfo, OAuthGrant,
-    RegisteredOAuthClient,
+    AuthRequestDisplay, DenyOutcome, IssuedTokens, MintedCode, OAuthAccess, OAuthClientInfo,
+    OAuthGrant, RegisteredOAuthClient,
 };
 
 /// Embedded migrations (run as the owner/migrator role).

@@ -54,33 +54,42 @@ pub struct AppState {
     pub session_ttl_secs: i64,
 }
 
-/// Resolve a bearer token to an [`AuthContext`]:
-/// - `mk_…` ⇒ API key (terminal agents / CLI)
-/// - `mss_…` ⇒ web session token (browser via the Next.js BFF); `org_override` (the
-///   `X-Org-Id` header) selects which of the user's orgs to act in (the org switcher)
-/// - `mo_…` ⇒ built-in OAuth connector token (Claude.ai / ChatGPT). The org is intrinsic to the
-///   token, so `org_override` is **ignored** — a connector must not switch orgs via a header.
+/// A resolved principal: a single-org request context, or an all-orgs connector (the user id;
+/// the org is selected per call). [`authenticate`] is the single-org view used by REST.
+#[derive(Debug, Clone)]
+pub enum Principal {
+    Org(AuthContext),
+    AllOrgs(Uuid),
+}
+
+/// Resolve a bearer token to a [`Principal`]:
+/// - `mk_…` ⇒ API key (single org) · `mss_…` ⇒ web session (`X-Org-Id` picks the org)
+/// - `mo_…` ⇒ built-in OAuth connector: a single-org token (org intrinsic, `X-Org-Id` ignored)
+///   or an **all-orgs** token (`AllOrgs(user_id)` — the agent picks the org per call)
 /// - otherwise ⇒ external OAuth JWT (Logto), if configured.
-pub async fn authenticate(
+pub async fn authenticate_principal(
     state: &AppState,
     token: &str,
     org_override: Option<Uuid>,
-) -> Result<AuthContext, mdm_core::Error> {
+) -> Result<Principal, mdm_core::Error> {
     let token = token.trim();
-    let ctx = if token.starts_with("mk_") {
-        state.db.authenticate_api_key(token).await?
+    let principal = if token.starts_with("mk_") {
+        Principal::Org(state.db.authenticate_api_key(token).await?)
     } else if token.starts_with(session::SESSION_PREFIX) {
         let user_id = session::verify(&state.session_secret, token).map_err(|err| {
             tracing::debug!(%err, "session token validation failed");
             mdm_core::Error::Unauthorized
         })?;
-        state.db.authenticate_session(user_id, org_override).await?
+        Principal::Org(state.db.authenticate_session(user_id, org_override).await?)
     } else if token.starts_with("mo_") {
-        // Built-in OAuth connector access token; the org is bound into the token itself.
-        state
+        match state
             .db
             .authenticate_oauth_access_token(token, &state.mcp_resource)
             .await?
+        {
+            mdm_db::OAuthAccess::Org(ctx) => Principal::Org(ctx),
+            mdm_db::OAuthAccess::AllOrgs { user_id } => Principal::AllOrgs(user_id),
+        }
     } else if let Some(oauth) = &state.oauth {
         let claims = oauth.validate(token).await.map_err(|err| {
             tracing::debug!(?err, "OAuth token validation failed");
@@ -88,18 +97,33 @@ pub async fn authenticate(
         })?;
         let org_id = uuid::Uuid::parse_str(&claims.org)
             .map_err(|_| mdm_core::Error::invalid("org claim is not a valid org id"))?;
-        state.db.authenticate_oauth(&claims.sub, org_id).await?
+        Principal::Org(state.db.authenticate_oauth(&claims.sub, org_id).await?)
     } else {
         return Err(mdm_core::Error::Unauthorized);
     };
 
     // Per-user rate limit (applies to both REST and the MCP endpoint).
-    if state.rate_limiter.check_key(&ctx.user_id).is_err() {
-        return Err(mdm_core::Error::TooManyRequests(
-            "rate limit exceeded".into(),
-        ));
+    let user_id = match &principal {
+        Principal::Org(ctx) => ctx.user_id,
+        Principal::AllOrgs(uid) => *uid,
+    };
+    if state.rate_limiter.check_key(&user_id).is_err() {
+        return Err(mdm_core::Error::TooManyRequests("rate limit exceeded".into()));
     }
-    Ok(ctx)
+    Ok(principal)
+}
+
+/// Resolve a bearer token to a single-org [`AuthContext`] (REST). An all-orgs connector token
+/// collapses to one org via `org_override` (the `X-Org-Id` header), else the user's first org.
+pub async fn authenticate(
+    state: &AppState,
+    token: &str,
+    org_override: Option<Uuid>,
+) -> Result<AuthContext, mdm_core::Error> {
+    match authenticate_principal(state, token, org_override).await? {
+        Principal::Org(ctx) => Ok(ctx),
+        Principal::AllOrgs(user_id) => state.db.authenticate_session(user_id, org_override).await,
+    }
 }
 
 /// Extractor yielding the resolved [`AuthContext`]; 401 if missing/invalid.

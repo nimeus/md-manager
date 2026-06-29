@@ -82,15 +82,20 @@ async function Consent({
       <form action={approveConsentAction} className="mt-5">
         <input type="hidden" name="request_id" value={requestId} />
         <label className="label" htmlFor="org_id">
-          Organization
+          Access
         </label>
         <select id="org_id" name="org_id" className="input" defaultValue={session.currentOrg}>
+          <option value="all">All my organizations</option>
           {orgs.map((o) => (
             <option key={o.id} value={o.id}>
-              {o.name} · {o.role}
+              Only {o.name} · {o.role}
             </option>
           ))}
         </select>
+        <p className="mt-1 text-xs text-ink-soft">
+          “All my organizations” lets it work across every org you belong to (it picks one per
+          request). A single org limits it to that one.
+        </p>
         <button className="btn-accent mt-4 w-full justify-center py-2.5" type="submit">
           Allow access
         </button>

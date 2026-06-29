@@ -140,7 +140,10 @@ export const api = {
   // OAuth consent (built-in connector authorization server)
   getOAuthRequest: (id: string) => req(`/v1/oauth/authorization-requests/${id}`),
   approveOAuthConsent: (id: string, orgId: string) =>
-    req(`/v1/oauth/authorization-requests/${id}/approve`, json({ org_id: orgId })),
+    req(
+      `/v1/oauth/authorization-requests/${id}/approve`,
+      json(orgId === "all" ? { all_orgs: true } : { org_id: orgId }),
+    ),
   denyOAuthConsent: (id: string) =>
     req(`/v1/oauth/authorization-requests/${id}/deny`, { method: "POST" }),
 
