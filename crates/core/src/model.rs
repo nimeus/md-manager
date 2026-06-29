@@ -302,6 +302,15 @@ pub struct UserOrg {
     pub role: OrgRole,
 }
 
+/// A member of an organization (for the members admin panel).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgMember {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: String,
+    pub role: OrgRole,
+}
+
 /// Result of resolving a verified Google identity to a user + their orgs (JIT provisioning).
 #[derive(Debug, Clone)]
 pub struct ProvisionedUser {

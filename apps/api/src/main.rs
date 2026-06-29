@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use mdm_config::Config;
 use mdm_db::Db;
@@ -76,6 +76,12 @@ fn router(state: AppState) -> Router {
             get(handlers::list_invitations).post(handlers::create_invitation),
         )
         .route("/v1/invitations/{id}", delete(handlers::revoke_invitation))
+        .route("/v1/invitations/accept", post(handlers::accept_invitation))
+        .route("/v1/members", get(handlers::list_members))
+        .route(
+            "/v1/members/{user_id}",
+            put(handlers::update_member).delete(handlers::remove_member),
+        )
         .route(
             "/v1/projects",
             get(handlers::list_projects).post(handlers::create_project),

@@ -176,3 +176,13 @@ pub struct SwitchGrantReq {
     pub from_org_id: Uuid,
     pub to_org_id: Uuid,
 }
+
+#[derive(Deserialize)]
+pub struct UpdateMemberReq {
+    pub role: String,
+}
+
+#[derive(Deserialize)]
+pub struct AcceptInviteReq {
+    pub token: String,
+}

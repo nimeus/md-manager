@@ -123,6 +123,13 @@ export const api = {
   createInvitation: (email: string, role: string) =>
     req("/v1/invitations", json({ email, role })),
   revokeInvitation: (id: string) => req(`/v1/invitations/${id}`, { method: "DELETE" }),
+  acceptInvite: (token: string) => req("/v1/invitations/accept", json({ token })),
+
+  // members
+  listMembers: () => req("/v1/members"),
+  updateMemberRole: (userId: string, role: string) =>
+    req(`/v1/members/${userId}`, { method: "PUT", body: JSON.stringify({ role }) }),
+  removeMember: (userId: string) => req(`/v1/members/${userId}`, { method: "DELETE" }),
 
   // OAuth consent (built-in connector authorization server)
   getOAuthRequest: (id: string) => req(`/v1/oauth/authorization-requests/${id}`),

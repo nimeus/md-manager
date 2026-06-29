@@ -642,3 +642,41 @@ pub async fn switch_oauth_grant(
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ---- members + invite acceptance --------------------------------------------
+
+pub async fn list_members(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_members(&ctx).await?)))
+}
+
+pub async fn update_member(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<UpdateMemberReq>,
+) -> ApiResult<StatusCode> {
+    s.db.update_member_role(&ctx, user_id, OrgRole::from_db(&req.role)?).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_member(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(user_id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    s.db.remove_member(&ctx, user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Accept an invitation by its link token (session-authed). Returns the joined org.
+pub async fn accept_invitation(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Json(req): Json<AcceptInviteReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let org = s.db.accept_invitation_by_token(ctx.user_id, &req.token).await?;
+    Ok(Json(json!(org)))
+}
