@@ -120,8 +120,17 @@ pub struct SearchQuery {
 
 #[derive(Deserialize)]
 pub struct CreateShareReq {
+    /// `public` (anyone with the link), `members` (org members), or `emails` (allow-list).
+    #[serde(default = "default_audience")]
+    pub audience: String,
+    /// Recipient emails when `audience = "emails"`.
+    #[serde(default)]
+    pub recipients: Vec<String>,
     #[serde(default)]
     pub expires_in_days: Option<i64>,
+}
+fn default_audience() -> String {
+    "public".to_string()
 }
 
 #[derive(Deserialize)]
@@ -175,4 +184,14 @@ pub struct RevokeGrantReq {
 pub struct SwitchGrantReq {
     pub from_org_id: Uuid,
     pub to_org_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateMemberReq {
+    pub role: String,
+}
+
+#[derive(Deserialize)]
+pub struct AcceptInviteReq {
+    pub token: String,
 }

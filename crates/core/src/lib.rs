@@ -21,6 +21,6 @@ pub mod validate;
 pub use error::{Error, Result};
 pub use model::{
     ActorType, ApiKeyCreated, ApiKeyInfo, AuditEntry, AuthContext, Category, Document,
-    DocumentSummary, DocumentVersion, OrgRole, Organization, Project, Role, SearchHit,
+    DocumentSummary, DocumentVersion, OrgMember, OrgRole, Organization, Project, Role, SearchHit,
     ShareLinkCreated, ShareLinkInfo, SharedDocument, Tag, Team, User, VersionKind, VersionSummary,
 };

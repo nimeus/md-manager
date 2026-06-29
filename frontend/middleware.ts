@@ -15,9 +15,12 @@ export function middleware(request: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/docs") ||
     pathname.startsWith("/auth/") ||
-    // The OAuth consent page self-guards (it redirects to /login?next=… when signed out),
-    // so it must not be force-redirected here — that would drop the request_id.
-    pathname.startsWith("/oauth/");
+    // The OAuth consent + invite-accept pages self-guard (they redirect to /login?next=… when
+    // signed out), so they must not be force-redirected here — that would drop their token.
+    pathname.startsWith("/oauth/") ||
+    pathname.startsWith("/invite/") ||
+    // Public share view: self-guards (renders public links anonymously; redirects private to login).
+    pathname.startsWith("/s/");
 
   if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import Editor from "@/components/editor";
+import ShareBox from "@/components/share-box";
 import { deleteDocumentAction, restoreVersionAction } from "@/lib/actions";
 import { api } from "@/lib/api";
 
@@ -8,6 +9,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const doc: any = await api.getDocument(id);
   const history: any[] = await api.history(id);
+  const shares: any[] = await api.listShares(id).catch(() => []);
 
   // Bind ids into the server actions used by the inline forms below.
   const del = deleteDocumentAction.bind(null, id);
@@ -35,6 +37,8 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
       </div>
 
       <Editor id={doc.id} initialContent={doc.content} initialVersion={doc.current_version} />
+
+      <ShareBox docId={doc.id} shares={shares} />
 
       <div>
         <h2 className="text-sm font-medium text-ink-soft">Version history</h2>

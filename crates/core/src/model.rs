@@ -302,6 +302,15 @@ pub struct UserOrg {
     pub role: OrgRole,
 }
 
+/// A member of an organization (for the members admin panel).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgMember {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: String,
+    pub role: OrgRole,
+}
+
 /// Result of resolving a verified Google identity to a user + their orgs (JIT provisioning).
 #[derive(Debug, Clone)]
 pub struct ProvisionedUser {
@@ -337,6 +346,8 @@ pub struct ShareLinkInfo {
     pub id: Uuid,
     pub document_id: Uuid,
     pub token_prefix: String,
+    /// Who may open the link: `public`, `members`, or `emails`.
+    pub audience: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339::option")]

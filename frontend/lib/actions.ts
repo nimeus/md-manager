@@ -26,16 +26,16 @@ export async function createOrgAction(formData: FormData): Promise<void> {
 
 /** Invite a teammate by email to the current org. */
 export async function inviteAction(
-  _prev: { ok?: string; error?: string } | null,
+  _prev: { ok?: string; error?: string; token?: string } | null,
   formData: FormData,
-): Promise<{ ok?: string; error?: string } | null> {
+): Promise<{ ok?: string; error?: string; token?: string } | null> {
   const email = String(formData.get("email") ?? "").trim();
   const role = String(formData.get("role") ?? "member");
   if (!email) return { error: "An email is required." };
   try {
-    await api.createInvitation(email, role);
+    const inv = await api.createInvitation(email, role);
     revalidatePath("/settings/members");
-    return { ok: `Invited ${email}. They'll join when they sign in with Google using that address.` };
+    return { ok: `Invited ${email}.`, token: inv.token };
   } catch (e) {
     return { error: e instanceof ApiError ? e.message : "Failed to send invite" };
   }
@@ -119,4 +119,80 @@ export async function switchOAuthGrantAction(formData: FormData): Promise<void> 
     await api.switchOAuthGrant(clientId, fromOrgId, toOrgId);
   }
   revalidatePath("/settings/keys");
+}
+
+// --- members + invite acceptance ---------------------------------------------
+
+export async function updateMemberRoleAction(formData: FormData): Promise<void> {
+  const userId = String(formData.get("user_id") ?? "");
+  const role = String(formData.get("role") ?? "");
+  if (userId && role) {
+    try {
+      await api.updateMemberRole(userId, role);
+    } catch {
+      /* guard rejections (e.g. last owner) — row stays unchanged on revalidate */
+    }
+  }
+  revalidatePath("/settings/members");
+}
+
+export async function removeMemberAction(formData: FormData): Promise<void> {
+  const userId = String(formData.get("user_id") ?? "");
+  if (userId) {
+    try {
+      await api.removeMember(userId);
+    } catch {
+      /* guard rejections — ignore */
+    }
+  }
+  revalidatePath("/settings/members");
+}
+
+export async function acceptInviteAction(formData: FormData): Promise<void> {
+  const token = String(formData.get("token") ?? "");
+  let orgId: string | null = null;
+  try {
+    const org = await api.acceptInvite(token);
+    orgId = org.id;
+  } catch {
+    redirect("/projects?invite=invalid");
+  }
+  if (orgId) await setCurrentOrg(orgId);
+  redirect("/projects");
+}
+
+// --- sharing -----------------------------------------------------------------
+
+export async function createShareAction(
+  _prev: { link?: string; error?: string } | null,
+  formData: FormData,
+): Promise<{ link?: string; error?: string } | null> {
+  const docId = String(formData.get("doc_id") ?? "");
+  const audience = String(formData.get("audience") ?? "public");
+  const recipients = String(formData.get("recipients") ?? "")
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const days = Number(formData.get("expires_days") ?? "");
+  const expiresInDays = Number.isFinite(days) && days > 0 ? days : undefined;
+  try {
+    const link = await api.createShare(docId, audience, recipients, expiresInDays);
+    revalidatePath(`/documents/${docId}`);
+    return { link: link.token }; // the one-time secret; the client builds the /s/<token> URL
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "Failed to create link" };
+  }
+}
+
+export async function revokeShareAction(formData: FormData): Promise<void> {
+  const linkId = String(formData.get("link_id") ?? "");
+  const docId = String(formData.get("doc_id") ?? "");
+  if (linkId) {
+    try {
+      await api.revokeShare(linkId);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (docId) revalidatePath(`/documents/${docId}`);
 }

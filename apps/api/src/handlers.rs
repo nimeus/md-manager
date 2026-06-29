@@ -476,9 +476,10 @@ pub async fn create_share(
     Path(id): Path<Uuid>,
     Json(req): Json<CreateShareReq>,
 ) -> ApiResult<Response> {
-    let link =
-        s.db.create_share_link(&ctx, id, req.expires_in_days)
-            .await?;
+    let link = s
+        .db
+        .create_share_link(&ctx, id, &req.audience, &req.recipients, req.expires_in_days)
+        .await?;
     Ok((StatusCode::CREATED, Json(link)).into_response())
 }
 
@@ -502,9 +503,17 @@ pub async fn revoke_share(
 /// PUBLIC — no auth. The token is the authorization; invalid/expired/revoked → 404.
 pub async fn get_shared(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(token): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    Ok(Json(json!(s.db.resolve_share_link(&token).await?)))
+    // Optional viewer identity (a web session) — required for `members`/`emails` shares.
+    let viewer = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .filter(|t| t.starts_with(crate::session::SESSION_PREFIX))
+        .and_then(|t| crate::session::verify(&s.session_secret, t).ok());
+    Ok(Json(json!(s.db.resolve_share_link(&token, viewer).await?)))
 }
 
 // --- audit -----------------------------------------------------------------
@@ -641,4 +650,42 @@ pub async fn switch_oauth_grant(
         .switch_oauth_grant(&ctx, &client_id, req.from_org_id, req.to_org_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---- members + invite acceptance --------------------------------------------
+
+pub async fn list_members(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!(s.db.list_members(&ctx).await?)))
+}
+
+pub async fn update_member(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<UpdateMemberReq>,
+) -> ApiResult<StatusCode> {
+    s.db.update_member_role(&ctx, user_id, OrgRole::from_db(&req.role)?).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_member(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Path(user_id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    s.db.remove_member(&ctx, user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Accept an invitation by its link token (session-authed). Returns the joined org.
+pub async fn accept_invitation(
+    State(s): State<AppState>,
+    Auth(ctx): Auth,
+    Json(req): Json<AcceptInviteReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let org = s.db.accept_invitation_by_token(ctx.user_id, &req.token).await?;
+    Ok(Json(json!(org)))
 }

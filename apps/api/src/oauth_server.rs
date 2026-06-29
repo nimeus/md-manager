@@ -365,7 +365,12 @@ pub async fn get_authorization_request(
 
 #[derive(Deserialize)]
 pub(crate) struct ApproveReq {
-    org_id: Uuid,
+    /// Specific org to grant (one-org connection), or omit with `all_orgs = true`.
+    #[serde(default)]
+    org_id: Option<Uuid>,
+    /// Grant access to ALL the user's orgs (the agent selects the org per call).
+    #[serde(default)]
+    all_orgs: bool,
 }
 
 pub async fn approve(
@@ -381,7 +386,7 @@ pub async fn approve(
     // The consenting user is the verified session user (ctx.user_id) — NOT the request body.
     let minted = s
         .db
-        .approve_authorization_request(id, ctx.user_id, req.org_id, settings.code_ttl_secs)
+        .approve_authorization_request(id, ctx.user_id, req.org_id, req.all_orgs, settings.code_ttl_secs)
         .await?;
     let mut params: Vec<(&str, &str)> = vec![("code", &minted.code)];
     if let Some(st) = &minted.state {

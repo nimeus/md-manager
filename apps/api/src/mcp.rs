@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::state::{AppState, authenticate};
+use crate::state::{AppState, Principal, authenticate_principal};
 
 /// RFC 9728 Protected Resource Metadata. 404 when OAuth isn't configured.
 pub async fn protected_resource_metadata(State(s): State<AppState>) -> Response {
@@ -44,11 +44,11 @@ pub async fn mcp_http(
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "));
-    let ctx = match token {
-        Some(t) => authenticate(&s, t, None).await.ok(),
+    let principal = match token {
+        Some(t) => authenticate_principal(&s, t, None).await.ok(),
         None => None,
     };
-    let Some(ctx) = ctx else {
+    let Some(principal) = principal else {
         return challenge(&s);
     };
 
@@ -56,13 +56,13 @@ pub async fn mcp_http(
         Value::Array(msgs) => {
             let mut out = Vec::new();
             for m in msgs {
-                if let Some(r) = handle_one(&s, &ctx, m).await {
+                if let Some(r) = handle_one(&s, &principal, m).await {
                     out.push(r);
                 }
             }
             out
         }
-        other => handle_one(&s, &ctx, other).await.into_iter().collect(),
+        other => handle_one(&s, &principal, other).await.into_iter().collect(),
     };
 
     if replies.is_empty() {
@@ -88,7 +88,7 @@ fn challenge(s: &AppState) -> Response {
         .into_response()
 }
 
-async fn handle_one(state: &AppState, ctx: &AuthContext, msg: &Value) -> Option<Value> {
+async fn handle_one(state: &AppState, principal: &Principal, msg: &Value) -> Option<Value> {
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
     let id = msg.get("id").cloned()?; // notifications (no id) ⇒ no response
 
@@ -114,12 +114,48 @@ async fn handle_one(state: &AppState, ctx: &AuthContext, msg: &Value) -> Option<
             let params = msg.get("params").cloned().unwrap_or(Value::Null);
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            Some(ok(
-                id,
-                tool_result(call_tool(state, ctx, name, &args).await),
-            ))
+            // `list_orgs` needs only the user id (no org context).
+            if name == "list_orgs" {
+                let uid = match principal {
+                    Principal::Org(c) => c.user_id,
+                    Principal::AllOrgs(u) => *u,
+                };
+                return Some(ok(
+                    id,
+                    tool_result(state.db.list_user_orgs(uid).await.map(|v| pretty(&v)).map_err(e)),
+                ));
+            }
+            let ctx = match resolve_ctx(state, principal, &args).await {
+                Ok(c) => c,
+                Err(msg) => return Some(ok(id, tool_result(Err(msg)))),
+            };
+            Some(ok(id, tool_result(call_tool(state, &ctx, name, &args).await)))
         }
         other => Some(err(id, -32601, &format!("method not found: {other}"))),
+    }
+}
+
+/// Resolve the org context for a tool call. Single-org principals use their bound org; an
+/// all-orgs connector must pass an `org` (slug) argument, validated against live membership.
+async fn resolve_ctx(
+    state: &AppState,
+    principal: &Principal,
+    args: &Value,
+) -> Result<AuthContext, String> {
+    match principal {
+        Principal::Org(ctx) => Ok(ctx.clone()),
+        Principal::AllOrgs(user_id) => {
+            let org = args.get("org").and_then(Value::as_str).ok_or_else(|| {
+                "this connector is authorized for all your organizations — pass an \"org\" \
+                 argument (a slug from list_orgs)"
+                    .to_string()
+            })?;
+            state
+                .db
+                .authenticate_oauth_user_in_org(*user_id, org)
+                .await
+                .map_err(|err| format!("error: {err}"))
+        }
     }
 }
 

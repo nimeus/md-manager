@@ -11,7 +11,8 @@ use uuid::Uuid;
 use crate::rows::{ShareLinkAuthRow, ShareLinkInfoRow, SharedDocRow};
 use crate::{Db, audit, map_db};
 
-const SHARE_INFO_COLS: &str = "id, document_id, token_prefix, created_at, expires_at, revoked_at";
+const SHARE_INFO_COLS: &str =
+    "id, document_id, token_prefix, audience, created_at, expires_at, revoked_at";
 
 impl Db {
     /// Mint a read-only share link for a document. The caller must be able to edit it.
@@ -20,8 +21,27 @@ impl Db {
         &self,
         ctx: &AuthContext,
         doc_id: Uuid,
+        audience: &str,
+        recipients: &[String],
         expires_in_days: Option<i64>,
     ) -> Result<ShareLinkCreated> {
+        if !matches!(audience, "public" | "members" | "emails") {
+            return Err(Error::invalid("audience must be public, members, or emails"));
+        }
+        let emails: Vec<String> = if audience == "emails" {
+            let e: Vec<String> = recipients
+                .iter()
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| s.contains('@'))
+                .collect();
+            if e.is_empty() {
+                return Err(Error::invalid("add at least one recipient email"));
+            }
+            e
+        } else {
+            Vec::new()
+        };
+
         let mut tx = self.begin_ctx(ctx).await.map_err(map_db)?;
         let project_id: Option<Uuid> = sqlx::query_scalar(
             "SELECT project_id FROM documents WHERE id = $1 AND deleted_at IS NULL",
@@ -43,8 +63,8 @@ impl Db {
 
         let row = sqlx::query_as::<_, ShareLinkInfoRow>(&format!(
             "INSERT INTO share_links
-               (id, org_id, document_id, token_prefix, token_hash, created_by, expires_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)
+               (id, org_id, document_id, token_prefix, token_hash, audience, created_by, expires_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
              RETURNING {SHARE_INFO_COLS}"
         ))
         .bind(id)
@@ -52,17 +72,31 @@ impl Db {
         .bind(doc_id)
         .bind(&token.prefix)
         .bind(&hash)
+        .bind(audience)
         .bind(ctx.user_id)
         .bind(expires_at)
         .fetch_one(&mut *tx)
         .await
         .map_err(map_db)?;
+
+        for email in &emails {
+            sqlx::query(
+                "INSERT INTO share_link_recipients (share_link_id, email) VALUES ($1, $2)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(id)
+            .bind(email)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_db)?;
+        }
+
         audit(
             &mut tx,
             ctx,
             "share.create",
             Some(&id.to_string()),
-            json!({ "document_id": doc_id }),
+            json!({ "document_id": doc_id, "audience": audience }),
         )
         .await
         .map_err(map_db)?;
@@ -140,13 +174,19 @@ impl Db {
         Ok(())
     }
 
-    /// Resolve a public share token to a read-only document view. No auth context — the
-    /// token IS the authorization. Invalid/expired/revoked tokens return `NotFound`
-    /// (never leaking which).
-    pub async fn resolve_share_link(&self, token: &str) -> Result<SharedDocument> {
+    /// Resolve a share token to a read-only document view, enforcing its audience:
+    /// `public` (anyone), `members` (a signed-in member of the doc's org), or `emails` (a
+    /// signed-in allow-listed recipient). `viewer` is the signed-in user id (None if anonymous).
+    /// Invalid/expired/revoked → `NotFound`; needs sign-in → `Unauthorized`; signed-in but not
+    /// allowed → `Forbidden`.
+    pub async fn resolve_share_link(
+        &self,
+        token: &str,
+        viewer: Option<Uuid>,
+    ) -> Result<SharedDocument> {
         let prefix = crypto::token_prefix("sl", token).ok_or(Error::NotFound)?;
         let candidates = sqlx::query_as::<_, ShareLinkAuthRow>(
-            "SELECT org_id, document_id, token_hash, expires_at, revoked_at
+            "SELECT id, org_id, document_id, token_hash, audience, expires_at, revoked_at
              FROM share_links WHERE token_prefix = $1",
         )
         .bind(&prefix)
@@ -168,9 +208,56 @@ impl Db {
             return Err(Error::NotFound);
         }
 
+        // Audience gate.
+        match link.audience.as_str() {
+            "public" => {}
+            "members" => {
+                let uid = viewer.ok_or(Error::Unauthorized)?;
+                let mut tx = self
+                    .begin_scoped(link.org_id, uid, ActorType::User)
+                    .await
+                    .map_err(map_db)?;
+                let role: Option<String> = sqlx::query_scalar(
+                    "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2",
+                )
+                .bind(link.org_id)
+                .bind(uid)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(map_db)?;
+                tx.commit().await.map_err(map_db)?;
+                if role.is_none() {
+                    return Err(Error::Forbidden);
+                }
+            }
+            "emails" => {
+                let uid = viewer.ok_or(Error::Unauthorized)?;
+                let email: Option<String> =
+                    sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+                        .bind(uid)
+                        .fetch_optional(self.pool())
+                        .await
+                        .map_err(map_db)?;
+                let email = email.ok_or(Error::Unauthorized)?.to_lowercase();
+                let allowed: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM share_link_recipients
+                                   WHERE share_link_id = $1 AND lower(email) = $2)",
+                )
+                .bind(link.id)
+                .bind(&email)
+                .fetch_one(self.pool())
+                .await
+                .map_err(map_db)?;
+                if !allowed {
+                    return Err(Error::Forbidden);
+                }
+            }
+            _ => return Err(Error::NotFound),
+        }
+
         // Read the linked document scoped to its org.
         let mut tx = self
-            .begin_scoped(link.org_id, Uuid::nil(), ActorType::User)
+            .begin_scoped(link.org_id, viewer.unwrap_or_else(Uuid::nil), ActorType::User)
             .await
             .map_err(map_db)?;
         let row = sqlx::query_as::<_, SharedDocRow>(

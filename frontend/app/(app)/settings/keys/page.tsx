@@ -91,14 +91,20 @@ function ConnectedApps({ grants, orgs }: { grants: any[]; orgs: any[] }) {
             <div className="min-w-0">
               <div className="text-sm font-medium">{g.client_name}</div>
               <div className="text-xs text-ink-soft">
-                org: <span className="text-ink-2">{g.org_name}</span>
+                {g.all_orgs ? (
+                  <span className="text-ink-2">All organizations</span>
+                ) : (
+                  <>
+                    org: <span className="text-ink-2">{g.org_name}</span>
+                  </>
+                )}
                 {g.last_used_at
                   ? ` · last used ${new Date(g.last_used_at).toLocaleDateString()}`
                   : ""}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {orgs.length > 1 && (
+              {!g.all_orgs && orgs.length > 1 && (
                 <form action={switchOAuthGrantAction} className="flex items-center gap-1.5">
                   <input type="hidden" name="client_id" value={g.client_id} />
                   <input type="hidden" name="from_org_id" value={g.org_id} />

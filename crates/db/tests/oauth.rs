@@ -78,7 +78,7 @@ async fn flow_to_code(db: &Db, user_id: Uuid, org_id: Uuid) -> (Uuid, String) {
     assert_eq!(display.scope, "mcp");
 
     let minted = db
-        .approve_authorization_request(req, user_id, org_id, 60)
+        .approve_authorization_request(req, user_id, Some(org_id), false, 60)
         .await
         .expect("approve");
     assert_eq!(minted.redirect_uri, REDIRECT);
@@ -102,10 +102,13 @@ async fn full_authorization_code_flow() {
     assert_eq!(tokens.access_expires_in, 3600);
 
     // The access token resolves to the bound (user, org) with the membership role.
-    let ctx = db
+    let mdm_db::OAuthAccess::Org(ctx) = db
         .authenticate_oauth_access_token(&tokens.access_token, RESOURCE)
         .await
-        .expect("validate access token");
+        .expect("validate access token")
+    else {
+        panic!("expected a single-org token");
+    };
     assert_eq!(ctx.user_id, user_id);
     assert_eq!(ctx.org_id, org_id);
     assert_eq!(ctx.actor_type, ActorType::Agent);
@@ -187,9 +190,9 @@ async fn request_is_single_use() {
         .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
         .await
         .unwrap();
-    assert!(db.approve_authorization_request(req, user_id, org_id, 60).await.is_ok());
+    assert!(db.approve_authorization_request(req, user_id, Some(org_id), false, 60).await.is_ok());
     // Second approval of the same request fails (consumed).
-    assert!(db.approve_authorization_request(req, user_id, org_id, 60).await.is_err());
+    assert!(db.approve_authorization_request(req, user_id, Some(org_id), false, 60).await.is_err());
 }
 
 #[tokio::test]
@@ -289,7 +292,7 @@ async fn connect(db: &Db, user_id: Uuid, org_id: Uuid) -> (String, mdm_db::Issue
         .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
         .await
         .unwrap();
-    let minted = db.approve_authorization_request(req, user_id, org_id, 60).await.unwrap();
+    let minted = db.approve_authorization_request(req, user_id, Some(org_id), false, 60).await.unwrap();
     let tokens = db
         .exchange_auth_code(info.db_id, &minted.code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
         .await
@@ -328,10 +331,13 @@ async fn grant_list_switch_revoke() {
     let grants = db.list_oauth_grants(&c).await.unwrap();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0].org_id, org_b, "grant moved to org B");
-    let actx = db
+    let mdm_db::OAuthAccess::Org(actx) = db
         .authenticate_oauth_access_token(&tokens.access_token, RESOURCE)
         .await
-        .unwrap();
+        .unwrap()
+    else {
+        panic!("expected a single-org token");
+    };
     assert_eq!(actx.org_id, org_b, "live token now operates in org B");
 
     // Revoke in org B: grant gone + token dead.
@@ -363,4 +369,50 @@ async fn switch_to_non_member_org_is_forbidden() {
     // Unchanged — still in org A.
     let grants = db.list_oauth_grants(&c).await.unwrap();
     assert_eq!(grants[0].org_id, org_a);
+}
+
+#[tokio::test]
+#[serial]
+async fn all_orgs_token_resolves_per_call() {
+    let db = setup().await;
+    let (user, org_a) = tenant(&db, "a@x.com", "acme").await;
+    let org_b = db
+        .bootstrap("a@x.com", "Tester", "globex", "Org B", "k2")
+        .await
+        .unwrap()
+        .0
+        .id;
+
+    // Connect with "all my organizations" (org_id None, all_orgs true).
+    let client = db
+        .register_oauth_client("Claude", &[REDIRECT.to_string()], true)
+        .await
+        .unwrap();
+    let info = db.find_oauth_client(&client.client_id).await.unwrap();
+    let req = db
+        .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
+        .await
+        .unwrap();
+    let minted = db.approve_authorization_request(req, user, None, true, 60).await.unwrap();
+    let tokens = db
+        .exchange_auth_code(info.db_id, &minted.code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .await
+        .unwrap();
+
+    // The access token resolves to AllOrgs (not a single org).
+    let user_id = match db
+        .authenticate_oauth_access_token(&tokens.access_token, RESOURCE)
+        .await
+        .unwrap()
+    {
+        mdm_db::OAuthAccess::AllOrgs { user_id } => user_id,
+        mdm_db::OAuthAccess::Org(_) => panic!("expected all-orgs"),
+    };
+    assert_eq!(user_id, user);
+
+    // Per-call org resolution: both of the user's orgs work (by slug and by id); others don't.
+    assert_eq!(db.authenticate_oauth_user_in_org(user, "acme").await.unwrap().org_id, org_a);
+    assert_eq!(db.authenticate_oauth_user_in_org(user, "globex").await.unwrap().org_id, org_b);
+    assert!(db.authenticate_oauth_user_in_org(user, &org_b.to_string()).await.is_ok());
+    assert!(db.authenticate_oauth_user_in_org(user, "nonexistent").await.is_err());
 }
