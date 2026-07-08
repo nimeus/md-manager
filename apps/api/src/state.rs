@@ -108,7 +108,9 @@ pub async fn authenticate_principal(
         Principal::AllOrgs(uid) => *uid,
     };
     if state.rate_limiter.check_key(&user_id).is_err() {
-        return Err(mdm_core::Error::TooManyRequests("rate limit exceeded".into()));
+        return Err(mdm_core::Error::TooManyRequests(
+            "rate limit exceeded".into(),
+        ));
     }
     Ok(principal)
 }

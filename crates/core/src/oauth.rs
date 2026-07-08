@@ -149,7 +149,10 @@ mod tests {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         assert!(verify_pkce_s256(verifier, challenge));
-        assert!(!verify_pkce_s256("the-wrong-verifier-the-wrong-verifier-xxxxx", challenge));
+        assert!(!verify_pkce_s256(
+            "the-wrong-verifier-the-wrong-verifier-xxxxx",
+            challenge
+        ));
     }
 
     #[test]

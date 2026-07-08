@@ -476,9 +476,14 @@ pub async fn create_share(
     Path(id): Path<Uuid>,
     Json(req): Json<CreateShareReq>,
 ) -> ApiResult<Response> {
-    let link = s
-        .db
-        .create_share_link(&ctx, id, &req.audience, &req.recipients, req.expires_in_days)
+    let link =
+        s.db.create_share_link(
+            &ctx,
+            id,
+            &req.audience,
+            &req.recipients,
+            req.expires_in_days,
+        )
         .await?;
     Ok((StatusCode::CREATED, Json(link)).into_response())
 }
@@ -635,7 +640,8 @@ pub async fn revoke_oauth_grant(
     Path(client_id): Path<String>,
     Json(req): Json<RevokeGrantReq>,
 ) -> ApiResult<StatusCode> {
-    s.db.revoke_oauth_grant(&ctx, &client_id, req.org_id).await?;
+    s.db.revoke_oauth_grant(&ctx, &client_id, req.org_id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -646,8 +652,7 @@ pub async fn switch_oauth_grant(
     Path(client_id): Path<String>,
     Json(req): Json<SwitchGrantReq>,
 ) -> ApiResult<StatusCode> {
-    s.db
-        .switch_oauth_grant(&ctx, &client_id, req.from_org_id, req.to_org_id)
+    s.db.switch_oauth_grant(&ctx, &client_id, req.from_org_id, req.to_org_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -667,7 +672,8 @@ pub async fn update_member(
     Path(user_id): Path<Uuid>,
     Json(req): Json<UpdateMemberReq>,
 ) -> ApiResult<StatusCode> {
-    s.db.update_member_role(&ctx, user_id, OrgRole::from_db(&req.role)?).await?;
+    s.db.update_member_role(&ctx, user_id, OrgRole::from_db(&req.role)?)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -686,6 +692,8 @@ pub async fn accept_invitation(
     Auth(ctx): Auth,
     Json(req): Json<AcceptInviteReq>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let org = s.db.accept_invitation_by_token(ctx.user_id, &req.token).await?;
+    let org =
+        s.db.accept_invitation_by_token(ctx.user_id, &req.token)
+            .await?;
     Ok(Json(json!(org)))
 }

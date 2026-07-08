@@ -62,7 +62,10 @@ pub async fn mcp_http(
             }
             out
         }
-        other => handle_one(&s, &principal, other).await.into_iter().collect(),
+        other => handle_one(&s, &principal, other)
+            .await
+            .into_iter()
+            .collect(),
     };
 
     if replies.is_empty() {
@@ -122,14 +125,24 @@ async fn handle_one(state: &AppState, principal: &Principal, msg: &Value) -> Opt
                 };
                 return Some(ok(
                     id,
-                    tool_result(state.db.list_user_orgs(uid).await.map(|v| pretty(&v)).map_err(e)),
+                    tool_result(
+                        state
+                            .db
+                            .list_user_orgs(uid)
+                            .await
+                            .map(|v| pretty(&v))
+                            .map_err(e),
+                    ),
                 ));
             }
             let ctx = match resolve_ctx(state, principal, &args).await {
                 Ok(c) => c,
                 Err(msg) => return Some(ok(id, tool_result(Err(msg)))),
             };
-            Some(ok(id, tool_result(call_tool(state, &ctx, name, &args).await)))
+            Some(ok(
+                id,
+                tool_result(call_tool(state, &ctx, name, &args).await),
+            ))
         }
         other => Some(err(id, -32601, &format!("method not found: {other}"))),
     }

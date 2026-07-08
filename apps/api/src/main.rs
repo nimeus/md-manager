@@ -208,7 +208,9 @@ async fn main() -> anyhow::Result<()> {
     };
     match (&builtin_oauth, &oauth) {
         (Some(_), _) => {
-            tracing::info!("built-in OAuth authorization server enabled (native Claude/ChatGPT connector)")
+            tracing::info!(
+                "built-in OAuth authorization server enabled (native Claude/ChatGPT connector)"
+            )
         }
         (None, Some(_)) => tracing::info!("external OAuth (JWT) resource server enabled for /mcp"),
         _ => {}

@@ -493,9 +493,15 @@ impl Db {
             .execute(&mut *tx)
             .await
             .map_err(map_db)?;
-        audit(&mut tx, ctx, "member.remove", Some(&target.to_string()), serde_json::json!({}))
-            .await
-            .map_err(map_db)?;
+        audit(
+            &mut tx,
+            ctx,
+            "member.remove",
+            Some(&target.to_string()),
+            serde_json::json!({}),
+        )
+        .await
+        .map_err(map_db)?;
         tx.commit().await.map_err(map_db)?;
         Ok(())
     }
@@ -522,14 +528,17 @@ impl Db {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         org_id: Uuid,
     ) -> Result<()> {
-        let owners: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM organization_members WHERE org_id = $1 AND role = 'owner'")
-                .bind(org_id)
-                .fetch_one(&mut **tx)
-                .await
-                .map_err(map_db)?;
+        let owners: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM organization_members WHERE org_id = $1 AND role = 'owner'",
+        )
+        .bind(org_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(map_db)?;
         if owners <= 1 {
-            return Err(Error::invalid("the organization must keep at least one owner"));
+            return Err(Error::invalid(
+                "the organization must keep at least one owner",
+            ));
         }
         Ok(())
     }

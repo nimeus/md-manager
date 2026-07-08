@@ -367,7 +367,10 @@ async fn full_db_layer() {
         .expect("create share");
     assert!(share.token.starts_with("sl_"));
     // public resolve returns the document content (no auth context)
-    let shared = db.resolve_share_link(&share.token, None).await.expect("resolve");
+    let shared = db
+        .resolve_share_link(&share.token, None)
+        .await
+        .expect("resolve");
     assert_eq!(shared.document_id, doc.id);
     assert!(!shared.content.is_empty());
     assert_eq!(db.list_share_links(&ctx_a, doc.id).await.unwrap().len(), 1);
@@ -378,7 +381,8 @@ async fn full_db_layer() {
     ));
     // a viewer can't mint a share link (needs editor on the doc)
     assert!(matches!(
-        db.create_share_link(&ctx_viewer, doc.id, "public", &[], None).await,
+        db.create_share_link(&ctx_viewer, doc.id, "public", &[], None)
+            .await,
         Err(mdm_core::Error::Forbidden)
     ));
     // revoke → the link stops resolving

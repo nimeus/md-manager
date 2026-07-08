@@ -10,8 +10,8 @@
 
 use mdm_core::model::{ActorType, AuthContext, OrgRole};
 use mdm_core::{Error, Result, crypto, ids, oauth as core_oauth};
-use sqlx::{FromRow, Postgres, Transaction};
 use serde::Serialize;
+use sqlx::{FromRow, Postgres, Transaction};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -588,14 +588,13 @@ impl Db {
     /// its whole family. Always succeeds (unknown tokens are a no-op).
     pub async fn revoke_oauth_token(&self, token: &str) -> Result<()> {
         if let Some(prefix) = crypto::token_prefix(core_oauth::ACCESS_TOKEN_SCHEME, token) {
-            let candidates =
-                sqlx::query_as::<_, (Uuid, String)>(
-                    "SELECT id, token_hash FROM oauth_access_tokens WHERE token_prefix = $1",
-                )
-                .bind(&prefix)
-                .fetch_all(self.pool())
-                .await
-                .map_err(map_db)?;
+            let candidates = sqlx::query_as::<_, (Uuid, String)>(
+                "SELECT id, token_hash FROM oauth_access_tokens WHERE token_prefix = $1",
+            )
+            .bind(&prefix)
+            .fetch_all(self.pool())
+            .await
+            .map_err(map_db)?;
             if let Some((id, _)) = candidates
                 .into_iter()
                 .find(|(_, h)| crypto::verify_token(&self.pepper, token, h))
@@ -772,7 +771,9 @@ impl Db {
         client_id: &str,
         org_id: Uuid,
     ) -> Result<()> {
-        let client_db_id = self.grant_client_db_id(client_id, ctx.user_id, org_id).await?;
+        let client_db_id = self
+            .grant_client_db_id(client_id, ctx.user_id, org_id)
+            .await?;
         let mut tx = self
             .begin_scoped(org_id, ctx.user_id, ActorType::User)
             .await
@@ -808,7 +809,9 @@ impl Db {
         if from_org == to_org {
             return Ok(());
         }
-        let client_db_id = self.grant_client_db_id(client_id, ctx.user_id, from_org).await?;
+        let client_db_id = self
+            .grant_client_db_id(client_id, ctx.user_id, from_org)
+            .await?;
         // The caller must currently be a member of the target org (RLS scope = to_org).
         let mut tx = self
             .begin_scoped(to_org, ctx.user_id, ActorType::User)

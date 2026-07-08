@@ -31,9 +31,16 @@ async fn setup() -> Db {
     }
     admin.close().await;
     Db::run_migrations(&owner_url()).await.expect("migrate");
-    Db::connect(&app_url(), 5, "test-pepper".into(), 1_000_000, 30, 1_000_000)
-        .await
-        .expect("connect app")
+    Db::connect(
+        &app_url(),
+        5,
+        "test-pepper".into(),
+        1_000_000,
+        30,
+        1_000_000,
+    )
+    .await
+    .expect("connect app")
 }
 
 #[tokio::test]
@@ -52,17 +59,38 @@ async fn share_audiences_are_enforced() {
         .unwrap();
 
     // Outsiders: a member of another org (bob) and a non-member (carol).
-    let bob = db.provision_google_user("g_bob", "bob@x.com", "Bob").await.unwrap();
-    let carol = db.provision_google_user("g_carol", "carol@x.com", "Carol").await.unwrap();
+    let bob = db
+        .provision_google_user("g_bob", "bob@x.com", "Bob")
+        .await
+        .unwrap();
+    let carol = db
+        .provision_google_user("g_carol", "carol@x.com", "Carol")
+        .await
+        .unwrap();
 
     // public — anyone, even anonymous.
-    let pub_t = db.create_share_link(&ctx, doc.id, "public", &[], None).await.unwrap().token;
+    let pub_t = db
+        .create_share_link(&ctx, doc.id, "public", &[], None)
+        .await
+        .unwrap()
+        .token;
     assert!(db.resolve_share_link(&pub_t, None).await.is_ok());
-    assert!(db.resolve_share_link(&pub_t, Some(carol.user_id)).await.is_ok());
+    assert!(
+        db.resolve_share_link(&pub_t, Some(carol.user_id))
+            .await
+            .is_ok()
+    );
 
     // members — only signed-in members of the doc's org.
-    let mem_t = db.create_share_link(&ctx, doc.id, "members", &[], None).await.unwrap().token;
-    assert!(matches!(db.resolve_share_link(&mem_t, None).await, Err(Error::Unauthorized)));
+    let mem_t = db
+        .create_share_link(&ctx, doc.id, "members", &[], None)
+        .await
+        .unwrap()
+        .token;
+    assert!(matches!(
+        db.resolve_share_link(&mem_t, None).await,
+        Err(Error::Unauthorized)
+    ));
     assert!(db.resolve_share_link(&mem_t, Some(alice.id)).await.is_ok());
     assert!(matches!(
         db.resolve_share_link(&mem_t, Some(carol.user_id)).await,
@@ -75,15 +103,30 @@ async fn share_audiences_are_enforced() {
         .await
         .unwrap()
         .token;
-    assert!(matches!(db.resolve_share_link(&em_t, None).await, Err(Error::Unauthorized)));
-    assert!(db.resolve_share_link(&em_t, Some(bob.user_id)).await.is_ok());
+    assert!(matches!(
+        db.resolve_share_link(&em_t, None).await,
+        Err(Error::Unauthorized)
+    ));
+    assert!(
+        db.resolve_share_link(&em_t, Some(bob.user_id))
+            .await
+            .is_ok()
+    );
     assert!(matches!(
         db.resolve_share_link(&em_t, Some(carol.user_id)).await,
         Err(Error::Forbidden)
     ));
 
     // emails audience requires at least one recipient.
-    assert!(db.create_share_link(&ctx, doc.id, "emails", &[], None).await.is_err());
+    assert!(
+        db.create_share_link(&ctx, doc.id, "emails", &[], None)
+            .await
+            .is_err()
+    );
     // unknown audience rejected.
-    assert!(db.create_share_link(&ctx, doc.id, "nope", &[], None).await.is_err());
+    assert!(
+        db.create_share_link(&ctx, doc.id, "nope", &[], None)
+            .await
+            .is_err()
+    );
 }

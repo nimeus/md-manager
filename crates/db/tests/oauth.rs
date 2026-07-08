@@ -40,9 +40,16 @@ async fn setup() -> Db {
     }
     admin.close().await;
     Db::run_migrations(&owner_url()).await.expect("migrate");
-    Db::connect(&app_url(), 5, "test-pepper".into(), 1_000_000, 30, 1_000_000)
-        .await
-        .expect("connect app")
+    Db::connect(
+        &app_url(),
+        5,
+        "test-pepper".into(),
+        1_000_000,
+        30,
+        1_000_000,
+    )
+    .await
+    .expect("connect app")
 }
 
 /// Bootstrap a tenant and return `(user_id, org_id)` for an owner of a fresh org.
@@ -60,12 +67,22 @@ async fn flow_to_code(db: &Db, user_id: Uuid, org_id: Uuid) -> (Uuid, String) {
         .register_oauth_client("Claude", &[REDIRECT.to_string()], true)
         .await
         .expect("register client");
-    assert!(client.client_secret.is_none(), "public client has no secret");
+    assert!(
+        client.client_secret.is_none(),
+        "public client has no secret"
+    );
     let info = db.find_oauth_client(&client.client_id).await.expect("find");
 
     let req = db
         .create_authorization_request(
-            info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", Some("state-123"), 600,
+            info.db_id,
+            REDIRECT,
+            CHALLENGE,
+            "S256",
+            RESOURCE,
+            "mcp",
+            Some("state-123"),
+            600,
         )
         .await
         .expect("create request");
@@ -94,7 +111,15 @@ async fn full_authorization_code_flow() {
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
 
     let tokens = db
-        .exchange_auth_code(cid, &code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .exchange_auth_code(
+            cid,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000,
+        )
         .await
         .expect("exchange");
     assert!(tokens.access_token.starts_with("mo_"));
@@ -130,15 +155,31 @@ async fn code_is_single_use() {
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
 
     assert!(
-        db.exchange_auth_code(cid, &code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
-            .await
-            .is_ok()
+        db.exchange_auth_code(
+            cid,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000
+        )
+        .await
+        .is_ok()
     );
     // Replaying the same code fails.
     assert!(
-        db.exchange_auth_code(cid, &code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
-            .await
-            .is_err()
+        db.exchange_auth_code(
+            cid,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000
+        )
+        .await
+        .is_err()
     );
 }
 
@@ -152,8 +193,13 @@ async fn pkce_and_redirect_and_audience_are_enforced() {
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
     assert!(
         db.exchange_auth_code(
-            cid, &code, REDIRECT, "wrong-verifier-wrong-verifier-wrong-verifier", Some(RESOURCE),
-            3600, 2_592_000,
+            cid,
+            &code,
+            REDIRECT,
+            "wrong-verifier-wrong-verifier-wrong-verifier",
+            Some(RESOURCE),
+            3600,
+            2_592_000,
         )
         .await
         .is_err()
@@ -162,17 +208,33 @@ async fn pkce_and_redirect_and_audience_are_enforced() {
     // Wrong redirect_uri.
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
     assert!(
-        db.exchange_auth_code(cid, &code, "https://evil.example/cb", VERIFIER, Some(RESOURCE), 3600, 2_592_000)
-            .await
-            .is_err()
+        db.exchange_auth_code(
+            cid,
+            &code,
+            "https://evil.example/cb",
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000
+        )
+        .await
+        .is_err()
     );
 
     // Wrong audience at the token endpoint.
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
     assert!(
-        db.exchange_auth_code(cid, &code, REDIRECT, VERIFIER, Some("https://api.test/WRONG"), 3600, 2_592_000)
-            .await
-            .is_err()
+        db.exchange_auth_code(
+            cid,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some("https://api.test/WRONG"),
+            3600,
+            2_592_000
+        )
+        .await
+        .is_err()
     );
 }
 
@@ -187,12 +249,22 @@ async fn request_is_single_use() {
         .unwrap();
     let info = db.find_oauth_client(&client.client_id).await.unwrap();
     let req = db
-        .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
+        .create_authorization_request(
+            info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600,
+        )
         .await
         .unwrap();
-    assert!(db.approve_authorization_request(req, user_id, Some(org_id), false, 60).await.is_ok());
+    assert!(
+        db.approve_authorization_request(req, user_id, Some(org_id), false, 60)
+            .await
+            .is_ok()
+    );
     // Second approval of the same request fails (consumed).
-    assert!(db.approve_authorization_request(req, user_id, Some(org_id), false, 60).await.is_err());
+    assert!(
+        db.approve_authorization_request(req, user_id, Some(org_id), false, 60)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -202,7 +274,15 @@ async fn refresh_rotates_and_reuse_kills_family() {
     let (user_id, org_id) = tenant(&db, "a@x.com", "acme").await;
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
     let t1 = db
-        .exchange_auth_code(cid, &code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .exchange_auth_code(
+            cid,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000,
+        )
         .await
         .unwrap();
 
@@ -244,7 +324,15 @@ async fn revoke_access_token() {
     let (user_id, org_id) = tenant(&db, "a@x.com", "acme").await;
     let (cid, code) = flow_to_code(&db, user_id, org_id).await;
     let tokens = db
-        .exchange_auth_code(cid, &code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .exchange_auth_code(
+            cid,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000,
+        )
         .await
         .unwrap();
 
@@ -275,9 +363,17 @@ async fn code_bound_to_its_client() {
         .unwrap();
     let other_info = db.find_oauth_client(&other.client_id).await.unwrap();
     assert!(
-        db.exchange_auth_code(other_info.db_id, &code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
-            .await
-            .is_err()
+        db.exchange_auth_code(
+            other_info.db_id,
+            &code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000
+        )
+        .await
+        .is_err()
     );
 }
 
@@ -289,19 +385,37 @@ async fn connect(db: &Db, user_id: Uuid, org_id: Uuid) -> (String, mdm_db::Issue
         .unwrap();
     let info = db.find_oauth_client(&client.client_id).await.unwrap();
     let req = db
-        .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
+        .create_authorization_request(
+            info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600,
+        )
         .await
         .unwrap();
-    let minted = db.approve_authorization_request(req, user_id, Some(org_id), false, 60).await.unwrap();
+    let minted = db
+        .approve_authorization_request(req, user_id, Some(org_id), false, 60)
+        .await
+        .unwrap();
     let tokens = db
-        .exchange_auth_code(info.db_id, &minted.code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .exchange_auth_code(
+            info.db_id,
+            &minted.code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000,
+        )
         .await
         .unwrap();
     (client.client_id, tokens)
 }
 
 fn ctx(user_id: Uuid, org_id: Uuid) -> AuthContext {
-    AuthContext { org_id, user_id, actor_type: ActorType::User, org_role: OrgRole::Owner }
+    AuthContext {
+        org_id,
+        user_id,
+        actor_type: ActorType::User,
+        org_role: OrgRole::Owner,
+    }
 }
 
 #[tokio::test]
@@ -327,7 +441,9 @@ async fn grant_list_switch_revoke() {
     assert_eq!(grants[0].client_id, client_id);
 
     // Switch org A → org B: the SAME access token now resolves to org B (no reconnect).
-    db.switch_oauth_grant(&c, &client_id, org_a, org_b).await.unwrap();
+    db.switch_oauth_grant(&c, &client_id, org_a, org_b)
+        .await
+        .unwrap();
     let grants = db.list_oauth_grants(&c).await.unwrap();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0].org_id, org_b, "grant moved to org B");
@@ -365,7 +481,11 @@ async fn switch_to_non_member_org_is_forbidden() {
     let c = ctx(user, org_a);
     let (client_id, _t) = connect(&db, user, org_a).await;
 
-    assert!(db.switch_oauth_grant(&c, &client_id, org_a, org_c).await.is_err());
+    assert!(
+        db.switch_oauth_grant(&c, &client_id, org_a, org_c)
+            .await
+            .is_err()
+    );
     // Unchanged — still in org A.
     let grants = db.list_oauth_grants(&c).await.unwrap();
     assert_eq!(grants[0].org_id, org_a);
@@ -390,12 +510,25 @@ async fn all_orgs_token_resolves_per_call() {
         .unwrap();
     let info = db.find_oauth_client(&client.client_id).await.unwrap();
     let req = db
-        .create_authorization_request(info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600)
+        .create_authorization_request(
+            info.db_id, REDIRECT, CHALLENGE, "S256", RESOURCE, "mcp", None, 600,
+        )
         .await
         .unwrap();
-    let minted = db.approve_authorization_request(req, user, None, true, 60).await.unwrap();
+    let minted = db
+        .approve_authorization_request(req, user, None, true, 60)
+        .await
+        .unwrap();
     let tokens = db
-        .exchange_auth_code(info.db_id, &minted.code, REDIRECT, VERIFIER, Some(RESOURCE), 3600, 2_592_000)
+        .exchange_auth_code(
+            info.db_id,
+            &minted.code,
+            REDIRECT,
+            VERIFIER,
+            Some(RESOURCE),
+            3600,
+            2_592_000,
+        )
         .await
         .unwrap();
 
@@ -411,8 +544,28 @@ async fn all_orgs_token_resolves_per_call() {
     assert_eq!(user_id, user);
 
     // Per-call org resolution: both of the user's orgs work (by slug and by id); others don't.
-    assert_eq!(db.authenticate_oauth_user_in_org(user, "acme").await.unwrap().org_id, org_a);
-    assert_eq!(db.authenticate_oauth_user_in_org(user, "globex").await.unwrap().org_id, org_b);
-    assert!(db.authenticate_oauth_user_in_org(user, &org_b.to_string()).await.is_ok());
-    assert!(db.authenticate_oauth_user_in_org(user, "nonexistent").await.is_err());
+    assert_eq!(
+        db.authenticate_oauth_user_in_org(user, "acme")
+            .await
+            .unwrap()
+            .org_id,
+        org_a
+    );
+    assert_eq!(
+        db.authenticate_oauth_user_in_org(user, "globex")
+            .await
+            .unwrap()
+            .org_id,
+        org_b
+    );
+    assert!(
+        db.authenticate_oauth_user_in_org(user, &org_b.to_string())
+            .await
+            .is_ok()
+    );
+    assert!(
+        db.authenticate_oauth_user_in_org(user, "nonexistent")
+            .await
+            .is_err()
+    );
 }

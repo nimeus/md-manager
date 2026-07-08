@@ -132,7 +132,11 @@ pub async fn register(State(s): State<AppState>, headers: HeaderMap, body: Bytes
         .take(200)
         .collect();
 
-    match s.db.register_oauth_client(&name, &req.redirect_uris, public).await {
+    match s
+        .db
+        .register_oauth_client(&name, &req.redirect_uris, public)
+        .await
+    {
         Ok(reg) => {
             // RFC 7591 response. Omit absent fields entirely (no null/empty — Claude is strict).
             let mut out = json!({
@@ -198,19 +202,39 @@ pub async fn authorize(State(s): State<AppState>, Query(q): Query<AuthorizeQuery
     // redirect_uri is now trusted — protocol errors go back to the client via redirect.
     let st = q.state.as_deref();
     if q.response_type.as_deref() != Some("code") {
-        return redirect_error(redirect_uri, OAuthErrorCode::InvalidRequest, "response_type must be code", st);
+        return redirect_error(
+            redirect_uri,
+            OAuthErrorCode::InvalidRequest,
+            "response_type must be code",
+            st,
+        );
     }
     let Some(challenge) = q.code_challenge.as_deref() else {
-        return redirect_error(redirect_uri, OAuthErrorCode::InvalidRequest, "code_challenge is required (PKCE)", st);
+        return redirect_error(
+            redirect_uri,
+            OAuthErrorCode::InvalidRequest,
+            "code_challenge is required (PKCE)",
+            st,
+        );
     };
     if q.code_challenge_method.as_deref().unwrap_or("") != PKCE_METHOD_S256 {
-        return redirect_error(redirect_uri, OAuthErrorCode::InvalidRequest, "code_challenge_method must be S256", st);
+        return redirect_error(
+            redirect_uri,
+            OAuthErrorCode::InvalidRequest,
+            "code_challenge_method must be S256",
+            st,
+        );
     }
     let resource = s.mcp_resource.as_str();
     if let Some(r) = q.resource.as_deref()
         && r != resource
     {
-        return redirect_error(redirect_uri, OAuthErrorCode::InvalidTarget, "resource does not match this server", st);
+        return redirect_error(
+            redirect_uri,
+            OAuthErrorCode::InvalidTarget,
+            "resource does not match this server",
+            st,
+        );
     }
     let scope = q.scope.as_deref().unwrap_or("mcp");
 
@@ -232,7 +256,12 @@ pub async fn authorize(State(s): State<AppState>, Query(q): Query<AuthorizeQuery
             let consent = format!("{}/oauth/consent?request_id={}", settings.web_url, req_id);
             Redirect::to(&consent).into_response()
         }
-        Err(_) => redirect_error(redirect_uri, OAuthErrorCode::ServerError, "could not start authorization", st),
+        Err(_) => redirect_error(
+            redirect_uri,
+            OAuthErrorCode::ServerError,
+            "could not start authorization",
+            st,
+        ),
     }
 }
 
@@ -258,20 +287,34 @@ pub async fn token(State(s): State<AppState>, Form(f): Form<TokenForm>) -> Respo
     // Client auth from the body. Public clients (Claude/ChatGPT) send only client_id; PKCE is
     // their proof. Confidential clients send client_secret (client_secret_post).
     let Some(client_id) = f.client_id.as_deref() else {
-        return oauth_error(StatusCode::UNAUTHORIZED, OAuthErrorCode::InvalidClient, "missing client_id");
+        return oauth_error(
+            StatusCode::UNAUTHORIZED,
+            OAuthErrorCode::InvalidClient,
+            "missing client_id",
+        );
     };
-    let client = match s.db.authenticate_oauth_client(client_id, f.client_secret.as_deref()).await {
+    let client = match s
+        .db
+        .authenticate_oauth_client(client_id, f.client_secret.as_deref())
+        .await
+    {
         Ok(c) => c,
         Err(_) => {
-            return oauth_error(StatusCode::UNAUTHORIZED, OAuthErrorCode::InvalidClient, "client authentication failed");
+            return oauth_error(
+                StatusCode::UNAUTHORIZED,
+                OAuthErrorCode::InvalidClient,
+                "client authentication failed",
+            );
         }
     };
 
     match f.grant_type.as_deref() {
         Some("authorization_code") => {
-            let (Some(code), Some(redirect_uri), Some(verifier)) =
-                (f.code.as_deref(), f.redirect_uri.as_deref(), f.code_verifier.as_deref())
-            else {
+            let (Some(code), Some(redirect_uri), Some(verifier)) = (
+                f.code.as_deref(),
+                f.redirect_uri.as_deref(),
+                f.code_verifier.as_deref(),
+            ) else {
                 return oauth_error(
                     StatusCode::BAD_REQUEST,
                     OAuthErrorCode::InvalidRequest,
@@ -292,20 +335,37 @@ pub async fn token(State(s): State<AppState>, Form(f): Form<TokenForm>) -> Respo
                 .await
             {
                 Ok(t) => token_response(t),
-                Err(_) => oauth_error(StatusCode::BAD_REQUEST, OAuthErrorCode::InvalidGrant, "invalid authorization code"),
+                Err(_) => oauth_error(
+                    StatusCode::BAD_REQUEST,
+                    OAuthErrorCode::InvalidGrant,
+                    "invalid authorization code",
+                ),
             }
         }
         Some("refresh_token") => {
             let Some(rt) = f.refresh_token.as_deref() else {
-                return oauth_error(StatusCode::BAD_REQUEST, OAuthErrorCode::InvalidRequest, "refresh_token is required");
+                return oauth_error(
+                    StatusCode::BAD_REQUEST,
+                    OAuthErrorCode::InvalidRequest,
+                    "refresh_token is required",
+                );
             };
             match s
                 .db
-                .refresh_oauth_token(client.db_id, rt, settings.access_ttl_secs, settings.refresh_ttl_secs)
+                .refresh_oauth_token(
+                    client.db_id,
+                    rt,
+                    settings.access_ttl_secs,
+                    settings.refresh_ttl_secs,
+                )
                 .await
             {
                 Ok(t) => token_response(t),
-                Err(_) => oauth_error(StatusCode::BAD_REQUEST, OAuthErrorCode::InvalidGrant, "invalid or reused refresh token"),
+                Err(_) => oauth_error(
+                    StatusCode::BAD_REQUEST,
+                    OAuthErrorCode::InvalidGrant,
+                    "invalid or reused refresh token",
+                ),
             }
         }
         other => oauth_error(
@@ -384,15 +444,22 @@ pub async fn approve(
         .as_ref()
         .ok_or(ApiError(mdm_core::Error::NotFound))?;
     // The consenting user is the verified session user (ctx.user_id) — NOT the request body.
-    let minted = s
-        .db
-        .approve_authorization_request(id, ctx.user_id, req.org_id, req.all_orgs, settings.code_ttl_secs)
+    let minted =
+        s.db.approve_authorization_request(
+            id,
+            ctx.user_id,
+            req.org_id,
+            req.all_orgs,
+            settings.code_ttl_secs,
+        )
         .await?;
     let mut params: Vec<(&str, &str)> = vec![("code", &minted.code)];
     if let Some(st) = &minted.state {
         params.push(("state", st));
     }
-    Ok(Json(json!({ "redirect_to": append_query(&minted.redirect_uri, &params) })))
+    Ok(Json(
+        json!({ "redirect_to": append_query(&minted.redirect_uri, &params) }),
+    ))
 }
 
 pub async fn deny(
@@ -405,7 +472,9 @@ pub async fn deny(
     if let Some(st) = &out.state {
         params.push(("state", st));
     }
-    Ok(Json(json!({ "redirect_to": append_query(&out.redirect_uri, &params) })))
+    Ok(Json(
+        json!({ "redirect_to": append_query(&out.redirect_uri, &params) }),
+    ))
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────────────────
@@ -461,7 +530,9 @@ fn pct(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

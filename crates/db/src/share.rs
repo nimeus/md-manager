@@ -26,7 +26,9 @@ impl Db {
         expires_in_days: Option<i64>,
     ) -> Result<ShareLinkCreated> {
         if !matches!(audience, "public" | "members" | "emails") {
-            return Err(Error::invalid("audience must be public, members, or emails"));
+            return Err(Error::invalid(
+                "audience must be public, members, or emails",
+            ));
         }
         let emails: Vec<String> = if audience == "emails" {
             let e: Vec<String> = recipients
@@ -257,7 +259,11 @@ impl Db {
 
         // Read the linked document scoped to its org.
         let mut tx = self
-            .begin_scoped(link.org_id, viewer.unwrap_or_else(Uuid::nil), ActorType::User)
+            .begin_scoped(
+                link.org_id,
+                viewer.unwrap_or_else(Uuid::nil),
+                ActorType::User,
+            )
             .await
             .map_err(map_db)?;
         let row = sqlx::query_as::<_, SharedDocRow>(
