@@ -1,0 +1,11 @@
+# Gitleaks config — see https://github.com/gitleaks/gitleaks#configuration
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentionally committed non-secrets"
+paths = [
+  # Throwaway RSA key used only to sign JWTs inside unit tests
+  # (include_str! in apps/api/src/oauth.rs and google.rs). Not a real secret.
+  '''apps/api/tests/fixtures/test_key\.pem''',
+]

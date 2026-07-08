@@ -1,5 +1,9 @@
 # md-manager
 
+[![CI](https://github.com/nimeus/md-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/nimeus/md-manager/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.96%2B-orange.svg)](rust-toolchain.toml)
+
 A multi-tenant manager for **markdown/text docs that live only in Postgres** — built so that **both humans and AI agents** can read, write, search, and share them safely.
 
 Markdown files have become the working memory and helper docs for AI agents (Claude, Gemini, GPT). md-manager stores them in a database (no loose files), gives teams shared organizations / projects / tags, and lets agents work with docs through an **MCP server** and a **CLI** — under the same permission and versioning rules as the web UI.
